@@ -14,5 +14,8 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        # Allow extra environment variables from Docker/Dokploy
+        # that are not defined in this model (e.g. app_name, docker_config)
+        extra = "ignore"
 
 settings = Settings()
