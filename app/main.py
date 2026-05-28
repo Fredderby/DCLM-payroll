@@ -627,8 +627,9 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     """Return payslip data as JSON for preview modal"""
     try:
         current_user = get_current_user_web(request, db)
-    except:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
     
     from app.models.payroll import PayrollRecord
     from app.models.employee import Employee
@@ -636,14 +637,18 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     
     payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
     if not payroll:
-        raise HTTPException(status_code=404, detail="Payslip not found")
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=404, content={"error": "Payslip not found"})
     
     # Generate PDF on demand if not already generated (for preview button to work)
-    if not payroll.pdf_generated or not os.path.exists(payroll.pdf_generated):
-        pdf_path = generate_payslip_pdf(db, payroll.id)
-        if pdf_path:
-            payroll.pdf_generated = pdf_path
-            db.commit()
+    if not payroll.pdf_generated or not os.path.exists(str(payroll.pdf_generated or "")):
+        try:
+            pdf_path = generate_payslip_pdf(db, payroll.id)
+            if pdf_path:
+                payroll.pdf_generated = pdf_path
+                db.commit()
+        except Exception as e:
+            pass  # PDF generation failed, preview still works
     
     employee = db.query(Employee).filter(Employee.name == payroll.employee_name).first()
     
@@ -664,7 +669,6 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "id": payroll.id,
         "month": payroll.month,
         "employee_name": payroll.employee_name or "N/A",
-        # Flatten employee fields so preview JS can access them directly
         "employee_number": emp_data.get("employee_number", "N/A"),
         "designation": emp_data.get("designation", ""),
         "function": emp_data.get("function", ""),
