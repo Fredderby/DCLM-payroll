@@ -1,0 +1,149 @@
+# =============================================================================
+# DCLM Payroll Management System - Docker Compose Configuration
+# =============================================================================
+#
+# SERVICES:
+#   app       - FastAPI web application (Python 3.12)
+#   celery    - Celery worker for background tasks (email, PDF generation)
+#   redis     - Message broker for Celery task queue
+#
+# PORTS:
+#   The application uses port 8000 (internal). Dokploy will map it externally.
+#   Avoids conflicts with: 3300, 5000, 8504, 8502, 8501
+#
+# NETWORKING:
+#   All services share the 'payroll-network' bridge network.
+#
+# USAGE:
+#   docker compose up -d
+#   docker compose down
+# =============================================================================
+
+version: "3.8"
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  payroll-network:
+    driver: bridge
+    name: payroll-network
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  # Persistent volume for generated payslip PDFs
+  payslips-data:
+    driver: local
+    name: payslips-data
+  # Redis data persistence (optional, for task durability)
+  redis-data:
+    driver: local
+    name: redis-data
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # Redis - Message broker for Celery task queue
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: payroll-redis
+    restart: unless-stopped
+    # Port only exposed if needed externally; typically internal is fine
+    # expose:
+    #   - "6379"
+    networks:
+      - payroll-network
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # FastAPI Application - Main web service
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Use multi-stage build target
+      target: production
+    container_name: payroll-app
+    restart: unless-stopped
+    # Map internal port 8000; Dokploy handles reverse proxy/SSL
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    networks:
+      - payroll-network
+    volumes:
+      # Mount generated payslips directory for persistence across restarts
+      - payslips-data:/app/payslips
+    environment:
+      # --- App Configuration ---
+      - APP_PORT=8000
+      - APP_WORKERS=${APP_WORKERS:-4}
+      - DEBUG=${DEBUG:-false}
+      # --- Database (set these in your .env or Dokploy env vars) ---
+      - DATABASE_URL=${DATABASE_URL}
+      # --- Security ---
+      - SECRET_KEY=${SECRET_KEY}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # --- Redis (used by Celery) ---
+      - REDIS_URL=redis://redis:6379/0
+      # --- SMTP / Email ---
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Celery Worker - Background task processing (email sending, PDF generation)
+  # ---------------------------------------------------------------------------
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: payroll-celery
+    restart: unless-stopped
+    networks:
+      - payroll-network
+    volumes:
+      - payslips-data:/app/payslips
+    environment:
+      # --- Database ---
+      - DATABASE_URL=${DATABASE_URL}
+      # --- Security ---
+      - SECRET_KEY=${SECRET_KEY}
+      # --- Redis (Celery broker) ---
+      - REDIS_URL=redis://redis:6379/0
+      # --- SMTP / Email ---
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+    depends_on:
+      app:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    # Start Celery worker with 4 concurrency
+    command: celery -A app.workers.celery_tasks.celery_app worker --loglevel=info --concurrency=4

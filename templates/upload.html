@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Payroll - DCLM Payroll Management System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="/static/css/style.css" rel="stylesheet" />
+    <link href="/static/css/progress.css" rel="stylesheet" />
+    <style>
+      .progress-ring-wrap { position: relative; width: 110px; height: 110px; margin: 0 auto 1.25rem; }
+      .progress-ring-wrap svg { width: 110px; height: 110px; }
+      .progress-ring-bg { fill: none; stroke: #e5e7eb; stroke-width: 6; }
+      .progress-ring-fill { fill: none; stroke: #0f3460; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 314.159; stroke-dashoffset: 314.159; transition: stroke-dashoffset 0.35s ease; transform: rotate(-90deg); transform-origin: 55px 55px; }
+      .progress-pct { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; font-weight: 800; color: #0f3460; }
+      .progress-pct small { font-size: 0.85rem; font-weight: 400; color: #9ca3af; }
+      .progress-status { background: #f3f4f6; border-radius: 10px; padding: 0.6rem 1rem; font-size: 0.82rem; color: #4b5563; margin-bottom: 0.75rem; min-height: 2.6rem; display: flex; align-items: center; justify-content: center; gap: 8px; }
+      .spinner-icon { width: 16px; height: 16px; border: 2px solid #d1d5db; border-top-color: #0f3460; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; flex-shrink: 0; }
+      .progress-bar-striped-custom { height: 5px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+      .progress-bar-fill { height: 100%; width: 0%; border-radius: 3px; background: linear-gradient(90deg, #0f3460, #1a1a2e); transition: width 0.3s ease; }
+      .progress-detail { display: flex; justify-content: space-between; font-size: 0.72rem; color: #9ca3af; margin-top: 0.4rem; }
+    </style>
+  </head>
+  <body>
+    <div class="app-wrapper">
+      {% include "partials/navigation.html" %}
+      <div class="main-content">
+        <div class="page-header">
+          <h2><i class="fas fa-upload me-2" style="color:#0f3460"></i>Upload Monthly Payroll</h2>
+          <p>Upload Excel or CSV files to process employee payroll data</p>
+        </div>
+        {% if message %}
+        <div class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-check-circle me-2"></i> {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+        {% endif %}
+        <div class="row">
+          <div class="col-lg-7">
+            <div class="card-modern">
+              <div class="card-modern-header"><h5><i class="fas fa-file-upload"></i> Upload File</h5></div>
+              <div class="card-modern-body">
+                <form method="POST" action="/upload" enctype="multipart/form-data" id="uploadForm">
+                  <div class="form-floating mb-4"><input type="month" class="form-control" id="month" name="month" required /><label><i class="fas fa-calendar form-icon"></i> Payroll Month</label></div>
+                  <div class="drag-zone mb-4" id="dragDrop">
+                    <input type="file" class="d-none" id="file" name="file" accept=".xlsx,.csv" required />
+                    <div class="drag-zone-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                    <h6>Drag &amp; drop your file here</h6>
+                    <p>or <strong>click to browse</strong> &mdash; .xlsx or .csv</p>
+                    <div id="fileInfo" class="mt-3" style="display:none"><div class="d-inline-block bg-light rounded-3 px-3 py-2"><i class="fas fa-file-excel text-success me-2"></i><span id="fileName" class="fw-600"></span><span class="text-muted ms-2" id="fileSize"></span></div></div>
+                  </div>
+                  <button type="submit" class="btn btn-primary w-100 py-2" id="submitBtn" style="border-radius:12px;font-weight:600;background:linear-gradient(135deg,#1a365d,#2a4a7f);border:none;"><i class="fas fa-upload me-2"></i> Upload Payroll Data</button>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="card-modern">
+              <div class="card-modern-header"><h5><i class="fas fa-info-circle"></i> File Format Guide</h5></div>
+              <div class="card-modern-body">
+                <div class="info-grid">
+                  <div class="info-item"><strong>Employee Info</strong><span>employee_number, name, email, function, designation, location, bank_account, date_joined, ssnit_number</span></div>
+                  <div class="info-item"><strong>Earnings</strong><span>basic_salary, meals_monthly, responsibility_allowance, cola, leave_allowance, other_earnings</span></div>
+                  <div class="info-item"><strong>Deductions</strong><span>paye, tithe (10%), future_savings, other_deductions</span></div>
+                  <div class="info-item"><strong>Contributions</strong><span>employer_contribution</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="card-modern">
+              <div class="card-modern-header"><h5><i class="fas fa-lightbulb"></i> Tips</h5></div>
+              <div class="card-modern-body">
+                <ul class="mb-0" style="font-size:0.85rem;color:#555;padding-left:1.2rem">
+                  <li class="mb-2">Ensure column names match exactly as specified</li>
+                  <li class="mb-2">Date format: YYYY-MM-DD for date_joined</li>
+                  <li class="mb-2">Employees matched by <strong>name</strong> (primary), then employee_number or email</li>
+                  <li class="mb-2"><strong>New employees</strong> are auto-created from unmatched names</li>
+                  <li class="mb-2"><strong>Missing employees</strong> (not in file) are listed as possibly terminated</li>
+                  <li class="mb-2">PDF payslips are <strong>not</strong> generated during upload &mdash; go to <a href="/payslips">Payslips</a> to generate PDFs when ready</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% if errors %}
+        <div class="card-modern">
+          <div class="card-modern-header"><h5><i class="fas fa-exclamation-triangle" style="color:#f97316"></i> Processing Errors</h5></div>
+          <div class="card-modern-body">
+            <ul class="mb-0" style="font-size:0.85rem;color:#dc2626">{% for err in errors %}<li class="mb-1">{{ err }}</li>{% endfor %}</ul>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <!-- Progress Overlay -->
+    <div class="progress-overlay" id="progressOverlay">
+      <div class="progress-card">
+        <svg width="0" height="0"><defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#0f3460" /><stop offset="100%" stop-color="#1a1a2e" /></linearGradient></defs></svg>
+        <div class="progress-ring-wrap">
+          <svg viewBox="0 0 110 110"><circle class="progress-ring-bg" cx="55" cy="55" r="50" /><circle class="progress-ring-fill" id="progressRing" cx="55" cy="55" r="50" /></svg>
+          <div class="progress-pct" id="progressPct">0<small>%</small></div>
+        </div>
+        <h5>Processing Payroll</h5>
+        <p id="progressSub">Reading file &amp; matching employees...</p>
+        <div class="progress-status" id="progressStatus"><span class="spinner-icon"></span><span id="progressLabel">Preparing...</span></div>
+        <div class="progress-bar-striped-custom"><div class="progress-bar-fill" id="progressBarFill"></div></div>
+        <div class="progress-detail"><span id="progressCurrent">0 / 0</span><span id="progressElapsed">00:00</span></div>
+      </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/menu-tabs.js"></script>
+    <script src="/static/js/toast-notifications.js"></script>
+    <script src="/static/js/progress-system.js"></script>
+    <script>
+      const today = new Date();
+      document.getElementById("month").value = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0");
+      const zone = document.getElementById("dragDrop");
+      const fileInput = document.getElementById("file");
+      const fileInfo = document.getElementById("fileInfo");
+      const fileName = document.getElementById("fileName");
+      const fileSize = document.getElementById("fileSize");
+      zone.addEventListener("click", () => fileInput.click());
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+      zone.addEventListener("dragleave", () => { zone.classList.remove("dragover"); });
+      zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("dragover"); fileInput.files = e.dataTransfer.files; showFile(); });
+      fileInput.addEventListener("change", showFile);
+      function showFile() { if (fileInput.files.length > 0) { const f = fileInput.files[0]; fileName.textContent = f.name; fileSize.textContent = (f.size / 1024).toFixed(1) + " KB"; fileInfo.style.display = "block"; } }
+      const form = document.getElementById("uploadForm");
+      const overlay = document.getElementById("progressOverlay");
+      const ring = document.getElementById("progressRing");
+      const pctEl = document.getElementById("progressPct");
+      const barEl = document.getElementById("progressBarFill");
+      const labelEl = document.getElementById("progressLabel");
+      const subEl = document.getElementById("progressSub");
+      const curEl = document.getElementById("progressCurrent");
+      const elapsedEl = document.getElementById("progressElapsed");
+      const submitBtn = document.getElementById("submitBtn");
+      const CIRCUM = 314.159;
+      function setProgress(pct, label, sub, cur) { var offset = CIRCUM - (CIRCUM * pct) / 100; ring.setAttribute("stroke-dashoffset", offset); barEl.style.width = pct + "%"; pctEl.innerHTML = Math.round(pct) + "<small>%</small>"; if (label) labelEl.textContent = label; if (sub) subEl.textContent = sub; if (cur) curEl.textContent = cur; }
+      function formatTime(secs) { var m = Math.floor(secs / 60); var s = Math.floor(secs % 60); return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
+      form.addEventListener("submit", function(e) { var fd = new FormData(form); var file = fd.get("file"); if (!file || !file.name) return; overlay.classList.add("show"); submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processing...'; var startTime = Date.now(); var timer = setInterval(function() { var secs = (Date.now() - startTime) / 1000; elapsedEl.textContent = formatTime(secs); }, 500); var progressInterval = setInterval(function() { var secs = (Date.now() - startTime) / 1000; var estPct; if (secs < 30) { estPct = 10 + (secs / 30) * 50; } else if (secs < 90) { estPct = 60 + ((secs - 30) / 60) * 30; } else { estPct = 90 + Math.min(((secs - 90) / 300) * 9, 9); } setProgress(Math.min(estPct, 99), "Saving records...", "Matching employees and processing payroll data", "processing..."); }, 1000); var xhr = new XMLHttpRequest(); xhr.open("POST", "/upload", true); xhr.responseType = "text"; xhr.upload.onprogress = function(evt) { if (evt.lengthComputable) { var pct = 5 + (evt.loaded / evt.total) * 10; setProgress(pct, "Uploading file...", "Uploaded " + (evt.loaded / 1024).toFixed(1) + " KB / " + (evt.total / 1024).toFixed(1) + " KB", "0 / ?"); } }; xhr.onloadstart = function() { setProgress(2, "Starting upload...", "Preparing payroll data", "0 / ?"); }; xhr.onload = function() { clearInterval(timer); clearInterval(progressInterval); overlay.classList.remove("show"); submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-upload me-2"></i> Upload Payroll Data'; document.open(); document.write(xhr.responseText); document.close(); };       xhr.onerror = function() { clearInterval(timer); clearInterval(progressInterval); overlay.classList.remove("show"); submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-upload me-2"></i> Upload Payroll Data'; if (typeof DCLMToast !== 'undefined') { DCLMToast.error('Upload Failed', 'A network error occurred. Please check your connection and try again.'); } else { alert("Upload failed. Please try again."); } }; xhr.send(fd); e.preventDefault(); });
+    </script>
+  </body>
+</html>

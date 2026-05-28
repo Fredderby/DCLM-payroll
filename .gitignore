@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+.venv/
+*.whl
+
+# Environment
+.env
+env-sample
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Generated artifacts
+payslips/
+*.log
+
+# Temp files
+fix_*.py
+sample_payroll.xlsx
+
+# Docker
+.dockerignore

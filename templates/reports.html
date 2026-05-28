@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Payroll Reports - DCLM Payroll Management System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  * { font-family: "Inter", sans-serif; }
+  body { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); background-attachment: fixed; }
+  .glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .glass-sidebar { background: rgba(15,15,35,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .sidebar-link { transition: all 0.2s ease; }
+  .sidebar-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .sidebar-link.active { background: rgba(255,255,255,0.12); color: #fff; font-weight: 600; }
+  .fade-in { animation: fadeIn 0.4s ease forwards; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .bar-chart { display: flex; align-items: end; gap: 6px; height: 180px; padding: 0 4px; }
+  .bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+  .bar-fill { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.8s ease; position: relative; }
+  .bar-fill:hover { opacity: 0.8; }
+  .bar-label { font-size: 0.65rem; color: #666; font-weight: 500; text-align: center; white-space: nowrap; transform: rotate(-30deg); margin-top: 4px; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+</style>
+</head>
+<body class="min-h-screen">
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  {% include "partials/navigation.html" %}
+  <!-- Main Content -->
+  <div class="ml-[260px] flex-1 p-6 lg:p-8 min-h-screen">
+    <div class="mb-6 fade-in">
+      <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-chart-bar text-blue-300"></i> Payroll Reports</h2>
+      <p class="text-blue-200/70 text-sm mt-1">Payroll summaries, monthly breakdowns and statistics</p>
+    </div>
+    {% if error %}<div class="mb-5 p-4 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 flex items-center gap-3 shadow-lg fade-in"><i class="fas fa-exclamation-circle text-red-400"></i> {{ error }}<button onclick="this.parentElement.remove()" class="ml-auto text-red-300/70 hover:text-red-200"><i class="fas fa-times"></i></button></div>{% endif %}
+    <!-- Stats -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 fade-in" style="animation-delay:0.1s">
+      <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+        <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:#4f46e5"><i class="fas fa-file-invoice"></i></div></div>
+        <div class="text-2xl font-bold" style="color:#0f3460">{{ stats.total_records or 0 }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Records</div>
+      </div>
+      <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+        <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);color:#10b981"><i class="fas fa-users"></i></div></div>
+        <div class="text-2xl font-bold" style="color:#0f3460">{{ stats.total_employees or 0 }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Employees</div>
+      </div>
+      <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+        <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#f97316"><i class="fas fa-coins"></i></div></div>
+        <div class="text-2xl font-bold" style="color:#0f3460">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Payroll</div>
+      </div>
+      <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+        <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);color:#8b5cf6"><i class="fas fa-calculator"></i></div></div>
+        <div class="text-2xl font-bold" style="color:#0f3460">GHS {{ "{:,.2f}".format(stats.avg_net or 0) }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Avg Net Salary</div>
+      </div>
+    </div>
+    <!-- Chart + Monthly Data -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6 fade-in" style="animation-delay:0.15s">
+      <div class="lg:col-span-3 rounded-2xl glass border border-white/20 shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
+          <i class="fas fa-chart-bar text-blue-800"></i>
+          <h5 class="font-bold text-sm text-gray-800">Monthly Payroll Summary</h5>
+        </div>
+        <div class="p-6">
+          {% if monthly_data %}
+          <div class="bar-chart" id="barChart">
+            {% set max_total = monthly_data|map(attribute='total')|max or 1 %}
+            {% for m in monthly_data %}
+            {% set pct = (m.total / max_total * 100) if max_total > 0 else 0 %}
+            {% set colors = ['#4f46e5','#10b981','#f97316','#8b5cf6','#06b6d4','#f43f5e','#0f3460','#059669','#d97706','#7c3aed'] %}
+            {% set ci = loop.index0 % 10 %}
+            <div class="bar-item">
+              <div class="bar-fill" style="height:0%;background:{{ colors[ci] }};transition-delay:{{ loop.index0 * 0.1 }}s" data-height="{{ pct }}"></div>
+              <div class="bar-label">{{ m.month[-2:] if m.month and m.month|length >= 7 else m.month }}</div>
+            </div>
+            {% endfor %}
+          </div>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-gray-500 uppercase tracking-wider"><th class="pb-2 font-semibold">Month</th><th class="pb-2 font-semibold text-right">Records</th><th class="pb-2 font-semibold text-right">Total Payroll</th><th class="pb-2 font-semibold text-right">Avg/Employee</th></tr></thead>
+              <tbody>
+                {% for m in monthly_data %}
+                <tr class="border-t border-gray-100"><td class="py-2.5 font-medium">{{ m.month }}</td><td class="py-2.5 text-right">{{ m.count }}</td><td class="py-2.5 text-right font-semibold">GHS {{ "{:,.2f}".format(m.total) }}</td><td class="py-2.5 text-right">GHS {{ "{:,.2f}".format(m.total / m.count) if m.count > 0 else '0.00' }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center py-12"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-400">No payroll data yet. Upload payroll to see reports.</p><a href="/upload" class="inline-block mt-3 px-5 py-2 rounded-xl font-semibold text-white text-sm" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"><i class="fas fa-upload mr-1"></i> Upload</a></div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="lg:col-span-2 rounded-2xl glass border border-white/20 shadow-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
+          <i class="fas fa-info-circle text-blue-800"></i>
+          <h5 class="font-bold text-sm text-gray-800">Insights</h5>
+        </div>
+        <div class="p-6">
+          {% if monthly_data %}
+          {% set total_employees = stats.total_employees or 0 %}
+          {% set total_records = stats.total_payroll or 0 %}
+          {% set avg = stats.avg_net or 0 %}
+          {% set latest_month = monthly_data[0].month if monthly_data else 'N/A' %}
+          {% set latest_total = monthly_data[0].total if monthly_data else 0 %}
+          <div class="space-y-4">
+            <div class="p-4 rounded-xl bg-blue-50 border border-blue-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-calendar text-blue-600 text-xs"></i><span class="text-xs font-semibold text-blue-800">Latest Month</span></div><div class="text-lg font-bold" style="color:#0f3460">{{ latest_month }}</div><div class="text-xs text-gray-500">GHS {{ "{:,.2f}".format(latest_total) }} total payroll</div></div>
+            <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-users text-emerald-600 text-xs"></i><span class="text-xs font-semibold text-emerald-800">Employee Count</span></div><div class="text-lg font-bold text-emerald-600">{{ total_employees }}</div><div class="text-xs text-gray-500">{{ monthly_data|length }} months of payroll history</div></div>
+            <div class="p-4 rounded-xl bg-amber-50 border border-amber-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-coins text-amber-600 text-xs"></i><span class="text-xs font-semibold text-amber-800">Average Net Salary</span></div><div class="text-lg font-bold text-amber-600">GHS {{ "{:,.2f}".format(avg) }}</div><div class="text-xs text-gray-500">Across {{ stats.total_records or 0 }} records</div></div>
+          </div>
+          {% else %}
+          <div class="text-center py-12"><i class="fas fa-lightbulb text-4xl text-gray-300 mb-3"></i><p class="text-gray-400 text-sm">Upload payroll data to see insights.</p></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <!-- Export -->
+    {% if monthly_data %}
+    <div class="rounded-2xl glass border border-white/20 shadow-lg fade-in" style="animation-delay:0.2s">
+      <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
+        <i class="fas fa-download text-blue-800"></i>
+        <h5 class="font-bold text-sm text-gray-800">Export Options</h5>
+      </div>
+      <div class="p-6 flex flex-wrap gap-3">
+        <a href="/reports/export?format=pdf" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#dc2626,#ef4444)"><i class="fas fa-file-pdf mr-2"></i> Export PDF</a>
+        <a href="/reports/export?format=csv" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#059669,#10b981)"><i class="fas fa-file-csv mr-2"></i> Export CSV</a>
+        <a href="/reports/export?format=xlsx" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"><i class="fas fa-file-excel mr-2"></i> Export Excel</a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<script>
+  // Animate bar chart on load
+  document.addEventListener('DOMContentLoaded', function() {
+    const bars = document.querySelectorAll('.bar-fill');
+    bars.forEach(function(bar, i) {
+      const h = parseFloat(bar.dataset.height) || 0;
+      setTimeout(function() {
+        bar.style.height = Math.max(h, 4) + '%';
+      }, 200 + (i * 80));
+    });
+  });
+</script>
+<script src="/static/js/menu-tabs.js"></script>
+<script src="/static/js/toast-notifications.js"></script>
+<script src="/static/js/progress-system.js"></script>
+</body>
+</html>
