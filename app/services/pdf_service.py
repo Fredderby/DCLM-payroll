@@ -105,10 +105,10 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         employee = PlaceholderEmployee(payroll.employee_name)
 
     month_display = _format_month(payroll.month)
-    logo_path = os.path.join("static", "img", "logo.jpg")
+    logo_path = os.path.join("static", "img", "logo.jpg") if os.path.exists(os.path.join("static", "img", "logo.jpg")) else os.path.join("static", "logo.jpg")
 
     safe_emp_name = (payroll.employee_name or "EMP").replace('/', '_').replace('\\', '_').replace(' ', '_')
-    safe_month = payroll.month.replace(' ', '_').replace('/', '_').replace('\\', '_')
+    safe_month = (payroll.month or '').replace(' ', '_').replace('/', '_').replace('\\', '_')
     filename = f"{output_dir}/{safe_emp_name}_{safe_month}.pdf"
     doc = WatermarkedDocTemplate(
         filename, pagesize=A4, logo_path=logo_path,
@@ -262,7 +262,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     elements.append(wrap)
     elements.append(Spacer(1, 0.12*inch))
 
-        # ═══════════ NET SALARY BOX ═══════════
+    # ═══════════ NET SALARY BOX ═══════════
     words_str = amount_to_words(payroll.net_salary)
 
     nsl = ParagraphStyle('nsl', fontSize=9, fontName='Helvetica-Bold',

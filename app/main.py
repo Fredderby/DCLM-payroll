@@ -641,7 +641,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         return JSONResponse(status_code=404, content={"error": "Payslip not found"})
     
     # Generate PDF on demand if not already generated (for preview button to work)
-    if not payroll.pdf_generated or not os.path.exists(str(payroll.pdf_generated or "")):
+    if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or "")):
         try:
             pdf_path = generate_payslip_pdf(db, payroll.id)
             if pdf_path:
@@ -706,14 +706,14 @@ async def download_payslip(payroll_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Payslip not found")
     
     # Generate PDF on demand if not already generated
-    if not payroll.pdf_generated or not os.path.exists(payroll.pdf_generated):
+    if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(payroll.pdf_generated):
         pdf_path = generate_payslip_pdf(db, payroll.id)
         if not pdf_path:
             raise HTTPException(status_code=500, detail="Failed to generate payslip PDF")
         payroll.pdf_generated = pdf_path
         db.commit()
     
-    if not os.path.exists(payroll.pdf_generated):
+    if not isinstance(payroll.pdf_generated, str) or not os.path.exists(payroll.pdf_generated):
         raise HTTPException(status_code=404, detail="PDF file not found")
     
     return FileResponse(payroll.pdf_generated, media_type="application/pdf", filename=os.path.basename(payroll.pdf_generated))
@@ -742,13 +742,13 @@ async def send_payslip_email(payroll_id: int, request: Request, db: Session = De
             return await send_payslip_redirect(request, "Employee email not configured.", "error")
         
         # Ensure PDF exists before sending
-        if not payroll.pdf_generated or not os.path.exists(payroll.pdf_generated):
+        if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or '')):
             pdf_path = generate_payslip_pdf(db, payroll.id)
             if pdf_path:
                 payroll.pdf_generated = pdf_path
                 db.commit()
         
-        if not payroll.pdf_generated or not os.path.exists(payroll.pdf_generated):
+        if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or '')):
             return await send_payslip_redirect(request, "Failed to generate PDF payslip.", "error")
         
         success, message = await EmailService.send_payslip(
