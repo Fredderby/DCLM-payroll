@@ -229,7 +229,7 @@
         if (d.success) {
           // Use SPA re-fetch instead of full reload
           if (window.__SPA_NAV_INITIALIZED) {
-            window.window.location.href = window.location.pathname + '?t=' + Date.now(); // simple soft reload via SPA navigate to same page
+            window.location.href = window.location.pathname + '?t=' + Date.now();
           } else {
             window.location.href = window.location.pathname + '?t=' + Date.now();
           }
@@ -254,7 +254,7 @@
     }).then(function(r){ return r.json(); }).then(function(d){
       alert(d.message || 'Done');
       if (window.__SPA_NAV_INITIALIZED) {
-        window.window.location.href = window.location.pathname + '?t=' + Date.now();
+        window.location.href = window.location.pathname + '?t=' + Date.now();
       } else {
         window.location.href = window.location.pathname + '?t=' + Date.now();
       }
