@@ -9,10 +9,9 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
       rel="stylesheet"
     />
-                        <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="/static/css/style.css" rel="stylesheet" />
+    <link href="/static/css/progress.css" rel="stylesheet" />
     <style>
       * {
         font-family: "Inter", sans-serif;
@@ -56,9 +55,9 @@
     </style>
   </head>
   <body class="min-h-screen">
-    <div class="flex min-h-screen">
+    <div class="app-wrapper">
       {% include "partials/navigation.html" %}
-      <div class="ml-[260px] flex-1 p-6 lg:p-8 min-h-screen">
+      <div class="main-content">
         <div class="mb-6">
           <h2 class="text-2xl font-bold text-white flex items-center gap-3">
             <i class="fas fa-hand-holding-usd text-blue-300"></i> Loan
@@ -143,6 +142,9 @@
         <script id="data-loan-employees" type="application/json">{{ employees_json|safe }}</script>
     <script id="data-loan-loans" type="application/json">{{ loans_json|safe }}</script>
     <script type="text/babel" src="/static/js/loans-page.jsx"></script>
-      <script src="/static/js/spa-navigation.js"></script>
+    <script src="/static/js/menu-tabs.js"></script>
+    <script src="/static/js/toast-notifications.js"></script>
+    <script src="/static/js/progress-system.js"></script>
+    <script src="/static/js/spa-navigation.js"></script>
 </body>
 </html>

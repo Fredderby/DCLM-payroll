@@ -7,6 +7,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+<link href="/static/css/style.css" rel="stylesheet" />
+<link href="/static/css/progress.css" rel="stylesheet" />
 <style>
   * { font-family: "Inter", sans-serif; }
   body { background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); background-attachment: fixed; }
@@ -24,9 +26,9 @@
 </style>
 </head>
 <body class="min-h-screen">
-<div class="flex min-h-screen">
+<div class="app-wrapper">
   {% include "partials/navigation.html" %}
-  <div class="ml-[260px] flex-1 p-6 lg:p-8 min-h-screen">
+  <div class="main-content">
     <div class="mb-6 fade-in">
       <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-history text-blue-300"></i> Upload History</h2>
       <p class="text-blue-200/70 text-sm mt-1">View all past payroll uploads and their processing status</p>
@@ -112,21 +114,24 @@
   </div>
 </div>
 <script>
-  function filterUploads() {
-    const status = document.getElementById('statusFilter').value.toLowerCase();
-    const query = document.getElementById('searchUpload').value.toLowerCase();
-    document.querySelectorAll('.upload-row').forEach(function(row) {
-      const s = row.dataset.status.toLowerCase();
-      const n = row.dataset.name;
-      const statusMatch = !status || s === status;
-      const nameMatch = !query || n.includes(query);
+(function(){
+  'use strict';
+  window.filterUploads = function(){
+    var status = (document.getElementById('statusFilter')?.value || '').toLowerCase();
+    var query = (document.getElementById('searchUpload')?.value || '').toLowerCase();
+    document.querySelectorAll('.upload-row').forEach(function(row){
+      var s = (row.dataset.status || '').toLowerCase();
+      var n = (row.dataset.name || '');
+      var statusMatch = !status || s === status;
+      var nameMatch = !query || n.includes(query);
       row.style.display = (statusMatch && nameMatch) ? '' : 'none';
     });
-  }
+  };
+})();
 </script>
 <script src="/static/js/menu-tabs.js"></script>
 <script src="/static/js/toast-notifications.js"></script>
 <script src="/static/js/progress-system.js"></script>
-    <script src="/static/js/spa-navigation.js"></script>
+<script src="/static/js/spa-navigation.js"></script>
 </body>
 </html>
