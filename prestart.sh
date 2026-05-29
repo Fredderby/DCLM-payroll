@@ -31,6 +31,7 @@ print('Database tables verified successfully.')
 
 # 3. Create required directories
 mkdir -p /app/payslips
+chmod 777 /app/payslips
 echo "Directory /app/payslips ready."
 
 echo "=== Pre-start complete. Starting application... ==="

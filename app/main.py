@@ -696,10 +696,16 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     }
 
 @app.get("/payslips/{payroll_id}/download")
-async def download_payslip(payroll_id: int, db: Session = Depends(get_db)):
+async def download_payslip(payroll_id: int, request: Request, db: Session = Depends(get_db)):
     from app.models.payroll import PayrollRecord
     from app.services.pdf_service import generate_payslip_pdf
     from fastapi.responses import FileResponse
+    
+    # Authenticate user
+    try:
+        current_user = get_current_user_web(request, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     
     payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
     if not payroll:

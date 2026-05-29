@@ -13,8 +13,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     link.addEventListener("click", () => {
-      navLinks.forEach((item) => item.classList.remove("active", "loading"));
-      link.classList.add("active", "loading");
+      navLinks.forEach((item) => item.classList.remove("active"));
+      link.classList.add("active");
     });
   });
 });

@@ -623,10 +623,6 @@ body {
   color: #fff;
 }
 
-.sidebar-menu a.loading {
-  opacity: 0.85;
-  transform: translateX(2px);
-}
 
 .sidebar-footer {
   padding: 1rem 1rem;
