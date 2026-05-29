@@ -25,6 +25,7 @@ var NAV_LINKS = [
   ]}
 ];
 
+// Dynamic current path - updated on SPA navigation
 var curPath = window.location.pathname.replace(/\/+$/, "").toLowerCase();
 var fullName = (userData.first_name || "") + " " + (userData.last_name || "");
 var roleLabel = userData.role || "User";
@@ -68,6 +69,27 @@ function init(){
     var h = useState(null);
     var hover = h[0];
     var setHover = h[1];
+    // Track current path as React state so it re-renders on SPA nav
+    var p = useState(curPath);
+    var navPath = p[0];
+    var setNavPath = p[1];
+
+    // Listen for SPA navigation changes to update active state
+    useEffect(function(){
+      function onNavChanged(e){
+        if(e.detail && e.detail.path){
+          setNavPath(e.detail.path);
+          curPath = e.detail.path;
+        }
+      }
+      window.addEventListener('nav-changed', onNavChanged);
+      return function(){ window.removeEventListener('nav-changed', onNavChanged); };
+    }, []);
+
+    // Use navPath instead of curPath for isActive check in render
+    function checkActive(href){
+      return href.replace(/\/+$/, "").toLowerCase() === navPath;
+    }
 
     useEffect(function(){
       try {
@@ -187,7 +209,7 @@ function init(){
                 }
               }, g.section),
               g.items.map(function(link){
-                var active = isActive(link.href);
+                var active = checkActive(link.href);
                 var isHov = hover === link.href;
                 return e("a", {
                   key: link.href,
