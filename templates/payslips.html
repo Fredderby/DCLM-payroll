@@ -28,11 +28,9 @@
 </style>
 </head>
 <body class="min-h-screen">
-<div class="flex min-h-screen">
-  <!-- Sidebar -->
+<div class="app-wrapper">
   {% include "partials/navigation.html" %}
-  <!-- Main Content -->
-  <div class="ml-[260px] flex-1 p-6 lg:p-8 min-h-screen">
+  <div class="main-content">
     <div class="mb-6 fade-in">
       <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-file-invoice text-blue-300"></i> Payslips</h2>
       <p class="text-blue-200/70 text-sm mt-1">View, generate and download employee payslips</p>
@@ -130,115 +128,149 @@
   </div>
 </div>
 <script>
-  const payslips = document.querySelectorAll('.payslip-item');
-  function applyFilters() {
-    const month = document.getElementById('monthFilter').value.toLowerCase();
-    const pdf = document.getElementById('pdfFilter').value;
-    const query = document.getElementById('searchQuery').value.toLowerCase();
-    payslips.forEach(el => {
-      const m = el.dataset.month.toLowerCase();
-      const p = el.dataset.pdf;
-      const n = el.dataset.name;
-      const monthMatch = !month || m === month;
-      const pdfMatch = !pdf || p === pdf;
-      const nameMatch = !query || n.includes(query);
+(function(){
+  'use strict';
+  // Only re-apply filters + event bindings if payslip items exist
+  var container = document.getElementById('payslipContainer');
+  if (!container) return;
+
+  var payslips = document.querySelectorAll('.payslip-item');
+
+  window.applyFilters = function(){
+    var month = (document.getElementById('monthFilter')?.value || '').toLowerCase();
+    var pdf = document.getElementById('pdfFilter')?.value || '';
+    var query = (document.getElementById('searchQuery')?.value || '').toLowerCase();
+    payslips.forEach(function(el){
+      var m = (el.dataset.month || '').toLowerCase();
+      var p = el.dataset.pdf || '';
+      var n = (el.dataset.name || '');
+      var monthMatch = !month || m === month;
+      var pdfMatch = !pdf || p === pdf;
+      var nameMatch = !query || n.includes(query);
       el.style.display = (monthMatch && pdfMatch && nameMatch) ? '' : 'none';
     });
-  }
-  function previewPayslip(id) {
-    const modal = document.getElementById('previewModal');
-    const content = document.getElementById('previewContent');
-    const downloadBtn = document.getElementById('downloadBtn');
+  };
+
+  window.previewPayslip = function(id){
+    var modal = document.getElementById('previewModal');
+    var content = document.getElementById('previewContent');
+    var downloadBtn = document.getElementById('downloadBtn');
+    if (!modal || !content || !downloadBtn) return;
     modal.classList.remove('hidden');
     content.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-3xl text-blue-800"></i><p class="mt-3 text-gray-500">Loading payslip data...</p></div>';
     downloadBtn.classList.add('hidden');
     fetch('/payslips/' + id + '/data')
-      .then(r => r.json())
-      .then(d => {
+      .then(function(r){ return r.json(); })
+      .then(function(d){
         downloadBtn.href = '/payslips/' + id + '/download';
         downloadBtn.classList.remove('hidden');
         content.innerHTML = buildPreviewHTML(d);
       })
-      .catch(e => {
+      .catch(function(e){
         content.innerHTML = '<div class="text-center py-8 text-red-500"><i class="fas fa-exclamation-circle text-3xl"></i><p class="mt-3">Failed to load payslip: ' + e.message + '</p></div>';
       });
-  }
-  function buildPreviewHTML(d) {
-    return `
-      <div class="border border-gray-200 rounded-xl overflow-hidden">
-        <div class="px-6 py-5 text-center border-b border-gray-200" style="background:#f8fafc">
-          <h4 class="font-bold text-lg" style="color:#1a1a2e">DEEPER CHRISTIAN LIFE MINISTRY</h4>
-          <p class="text-xs text-gray-500">P.O. BOX AN 16866, ACCRA-GHANA</p>
-          <div class="mt-3"><h5 class="font-bold" style="color:#0f3460">${d.employee_name}</h5></div>
-          <div class="text-xs text-gray-400">${d.bank_name && d.bank_name !== 'N/A' ? 'Bank: ' + d.bank_name + ' ' + (d.bank_branch||'') + ' | Acc: ' + (d.bank_number||'N/A') : ''}</div>
-          <div class="mt-2"><span class="font-bold text-lg" style="color:#0f3460">PAY SLIP</span></div>
-          <div class="text-sm font-semibold text-gray-600">for ${d.month}</div>
-        </div>
-        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
-            <div><span class="text-gray-500">Bank Name:</span> <span class="font-medium">${d.bank_name || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Employee No.:</span> <span class="font-medium">${d.employee_number || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Function:</span> <span class="font-medium">${d.function || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Designation:</span> <span class="font-medium">${d.designation || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Location:</span> <span class="font-medium">${d.location || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Date Joined:</span> <span class="font-medium">${d.date_joined || 'N/A'}</span></div>
-            <div><span class="text-gray-500">SSNIT No.:</span> <span class="font-medium">${d.ssnit_number || 'N/A'}</span></div>
-            <div><span class="text-gray-500">Account No.:</span> <span class="font-medium">${d.bank_number || 'N/A'}</span></div>
-          </div>
-        </div>
-        <table class="w-full text-sm">
-          <thead><tr style="background:#0f3460;color:#fff"><th class="text-left px-4 py-3 font-medium">DESCRIPTION</th><th class="text-right px-4 py-3 font-medium">EARNINGS (GHS)</th><th class="text-right px-4 py-3 font-medium">DEDUCTIONS (GHS)</th></tr></thead>
-          <tbody>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">Basic Salary</td><td class="px-4 py-2.5 text-right">${d.basic_salary.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">Meals Monthly</td><td class="px-4 py-2.5 text-right">${d.meals_monthly.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">Responsibility Allowance</td><td class="px-4 py-2.5 text-right">${d.responsibility_allowance.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">COLA</td><td class="px-4 py-2.5 text-right">${d.cola.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">Leave Allowance</td><td class="px-4 py-2.5 text-right">${d.leave_allowance.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100"><td class="px-4 py-2.5">Other Earnings</td><td class="px-4 py-2.5 text-right">${d.other_earnings.toFixed(2)}</td><td class="px-4 py-2.5 text-right text-gray-400">—</td></tr>
-            <tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">PAYE Tax</td><td class="px-4 py-2.5 text-right text-gray-400">—</td><td class="px-4 py-2.5 text-right">${d.paye.toFixed(2)}</td></tr>
-            <tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">10% Tithe</td><td class="px-4 py-2.5 text-right text-gray-400">—</td><td class="px-4 py-2.5 text-right">${d.tithe.toFixed(2)}</td></tr>
-            <tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Future Savings</td><td class="px-4 py-2.5 text-right text-gray-400">—</td><td class="px-4 py-2.5 text-right">${d.future_savings.toFixed(2)}</td></tr>
-            <tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Other Deductions</td><td class="px-4 py-2.5 text-right text-gray-400">—</td><td class="px-4 py-2.5 text-right">${d.other_deductions.toFixed(2)}</td></tr>
-            <tr style="background:#f3f4f6"><td class="px-4 py-3 font-bold">TOTAL</td><td class="px-4 py-3 text-right font-bold">${d.total_earnings.toFixed(2)}</td><td class="px-4 py-3 text-right font-bold">${d.total_deductions.toFixed(2)}</td></tr>
-          </tbody>
-        </table>
-        <div class="px-6 py-5" style="background:#ecfdf5">
-          <div class="flex justify-between items-center"><span class="font-bold text-emerald-800">NET SALARY</span><span class="text-2xl font-bold text-emerald-600">GHS ${d.net_salary.toFixed(2)}</span></div>
-        </div>
-        ${d.employer_contribution > 0 ? `<div class="px-6 py-2 text-xs text-gray-400 text-center border-t border-gray-100">Employer Contribution: GHS ${d.employer_contribution.toFixed(2)}</div>` : ''}
-        <div class="px-6 py-3 text-xs text-gray-400 text-center border-t border-gray-100">This is a computer-generated document and does not require a signature.</div>
-      </div>`;
-  }
-  function closePreview() { document.getElementById('previewModal').classList.add('hidden'); }
-  function generateSinglePDF(id) {
+  };
+
+  window.buildPreviewHTML = function(d){
+    return '<div class="border border-gray-200 rounded-xl overflow-hidden">' +
+      '<div class="px-6 py-5 text-center border-b border-gray-200" style="background:#f8fafc">' +
+        '<h4 class="font-bold text-lg" style="color:#1a1a2e">DEEPER CHRISTIAN LIFE MINISTRY</h4>' +
+        '<p class="text-xs text-gray-500">P.O. BOX AN 16866, ACCRA-GHANA</p>' +
+        '<div class="mt-3"><h5 class="font-bold" style="color:#0f3460">' + d.employee_name + '</h5></div>' +
+        '<div class="text-xs text-gray-400">' + (d.bank_name && d.bank_name !== 'N/A' ? 'Bank: ' + d.bank_name + ' ' + (d.bank_branch||'') + ' | Acc: ' + (d.bank_number||'N/A') : '') + '</div>' +
+        '<div class="mt-2"><span class="font-bold text-lg" style="color:#0f3460">PAY SLIP</span></div>' +
+        '<div class="text-sm font-semibold text-gray-600">for ' + d.month + '</div>' +
+      '</div>' +
+      '<div class="px-6 py-4 bg-gray-50 border-b border-gray-200">' +
+        '<div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">' +
+          '<div><span class="text-gray-500">Bank Name:</span> <span class="font-medium">' + (d.bank_name || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Employee No.:</span> <span class="font-medium">' + (d.employee_number || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Function:</span> <span class="font-medium">' + (d.function || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Designation:</span> <span class="font-medium">' + (d.designation || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Location:</span> <span class="font-medium">' + (d.location || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Date Joined:</span> <span class="font-medium">' + (d.date_joined || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">SSNIT No.:</span> <span class="font-medium">' + (d.ssnit_number || 'N/A') + '</span></div>' +
+          '<div><span class="text-gray-500">Account No.:</span> <span class="font-medium">' + (d.bank_number || 'N/A') + '</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<table class="w-full text-sm">' +
+        '<thead><tr style="background:#0f3460;color:#fff"><th class="text-left px-4 py-3 font-medium">DESCRIPTION</th><th class="text-right px-4 py-3 font-medium">EARNINGS (GHS)</th><th class="text-right px-4 py-3 font-medium">DEDUCTIONS (GHS)</th></tr></thead>' +
+        '<tbody>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Basic Salary</td><td class="px-4 py-2.5 text-right">' + d.basic_salary.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Meals Monthly</td><td class="px-4 py-2.5 text-right">' + d.meals_monthly.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Responsibility Allowance</td><td class="px-4 py-2.5 text-right">' + d.responsibility_allowance.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">COLA</td><td class="px-4 py-2.5 text-right">' + d.cola.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Leave Allowance</td><td class="px-4 py-2.5 text-right">' + d.leave_allowance.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Other Earnings</td><td class="px-4 py-2.5 text-right">' + d.other_earnings.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
+          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">PAYE Tax</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.paye.toFixed(2) + '</td></tr>' +
+          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">10% Tithe</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.tithe.toFixed(2) + '</td></tr>' +
+          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Future Savings</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.future_savings.toFixed(2) + '</td></tr>' +
+          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Other Deductions</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.other_deductions.toFixed(2) + '</td></tr>' +
+          '<tr style="background:#f3f4f6"><td class="px-4 py-3 font-bold">TOTAL</td><td class="px-4 py-3 text-right font-bold">' + d.total_earnings.toFixed(2) + '</td><td class="px-4 py-3 text-right font-bold">' + d.total_deductions.toFixed(2) + '</td></tr>' +
+        '</tbody>' +
+      '</table>' +
+      '<div class="px-6 py-5" style="background:#ecfdf5">' +
+        '<div class="flex justify-between items-center"><span class="font-bold text-emerald-800">NET SALARY</span><span class="text-2xl font-bold text-emerald-600">GHS ' + d.net_salary.toFixed(2) + '</span></div>' +
+      '</div>' +
+      (d.employer_contribution > 0 ? '<div class="px-6 py-2 text-xs text-gray-400 text-center border-t border-gray-100">Employer Contribution: GHS ' + d.employer_contribution.toFixed(2) + '</div>' : '') +
+      '<div class="px-6 py-3 text-xs text-gray-400 text-center border-t border-gray-100">This is a computer-generated document and does not require a signature.</div>' +
+    '</div>';
+  };
+
+  window.closePreview = function(){
+    var modal = document.getElementById('previewModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  window.generateSinglePDF = function(id){
     fetch('/payslips/generate-single/' + id, { method: 'POST' })
-      .then(r => r.json())
-      .then(d => { if (d.success) { location.reload(); } else { alert('Failed: ' + (d.message || 'Unknown error')); } })
-      .catch(e => alert('Error: ' + e.message));
-  }
-  function generateAllPDFs() {
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.success) {
+          // Use SPA re-fetch instead of full reload
+          if (window.__SPA_NAV_INITIALIZED) {
+            window.window.location.href = window.location.pathname + '?t=' + Date.now(); // simple soft reload via SPA navigate to same page
+          } else {
+            window.location.href = window.location.pathname + '?t=' + Date.now();
+          }
+        } else {
+          alert('Failed: ' + (d.message || 'Unknown error'));
+        }
+      })
+      .catch(function(e){ alert('Error: ' + e.message); });
+  };
+
+  window.generateAllPDFs = function(){
     if (!confirm('Generate PDFs for all payslips?')) return;
     var btn = document.querySelector('button[onclick*="generateAllPDFs"]');
-    if (!btn) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating...';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating...';
+    }
     fetch('/payslips/generate-all', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'month=__ALL__'
-    }).then(function(r) { return r.json(); }).then(function(d) {
+    }).then(function(r){ return r.json(); }).then(function(d){
       alert(d.message || 'Done');
-      location.reload();
-    }).catch(function(e) {
+      if (window.__SPA_NAV_INITIALIZED) {
+        window.window.location.href = window.location.pathname + '?t=' + Date.now();
+      } else {
+        window.location.href = window.location.pathname + '?t=' + Date.now();
+      }
+    }).catch(function(e){
       alert('Error: ' + e.message);
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-file-pdf mr-2"></i> Generate All PDFs';
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-file-pdf mr-2"></i> Generate All PDFs';
+      }
     });
-  }
+  };
+})();
 </script>
 <script src="/static/js/menu-tabs.js"></script>
 <script src="/static/js/toast-notifications.js"></script>
 <script src="/static/js/progress-system.js"></script>
-    <script src="/static/js/spa-navigation.js"></script>
+<script src="/static/js/spa-navigation.js"></script>
 </body>
 </html>
