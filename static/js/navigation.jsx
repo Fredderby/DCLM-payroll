@@ -86,6 +86,25 @@ function init(){
       return function(){ window.removeEventListener('nav-changed', onNavChanged); };
     }, []);
 
+    // Listen for SPA navigation events from our custom implementation
+    useEffect(function(){
+      function onSPANavigate(e){
+        if(e.detail && e.detail.path){
+          // Update the current path
+          curPath = e.detail.path;
+          setNavPath(e.detail.path);
+          
+          // Navigate using SPA system but don't trigger full page reload
+          const spaNav = document.querySelector('script[src="/static/js/spa-navigation.js"]');
+          if (spaNav && typeof window.navigateTo === 'function') {
+            window.navigateTo(e.detail.path, { replace: false });
+          }
+        }
+      }
+      window.addEventListener('spa-navigate', onSPANavigate);
+      return function(){ window.removeEventListener('spa-navigate', onSPANavigate); };
+    }, []);
+
     // Use navPath instead of curPath for isActive check in render
     function checkActive(href){
       return href.replace(/\/+$/, "").toLowerCase() === navPath;
@@ -217,6 +236,13 @@ function init(){
                   title: collapsed ? link.label : undefined,
                   onMouseEnter: function(){ setHover(link.href); prefetch(link.href); },
                   onMouseLeave: function(){ setHover(null); },
+                  onClick: function(e){
+                    // Add custom SPA navigation
+                    if (!link.href.startsWith('http') && !link.href.includes('/logout') && !link.download) {
+                      e.preventDefault();
+                      window.dispatchEvent(new CustomEvent('spa-navigate', { detail: { path: link.href }}));
+                    }
+                  },
                   style: {
                     display:"flex", alignItems:"center",
                     borderRadius:"10px", fontSize:"14px", fontWeight:active?700:500,

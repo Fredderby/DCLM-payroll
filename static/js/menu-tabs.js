@@ -26,8 +26,14 @@
     });
   }
 
-  // Export function globally
+  // Export function globally for reuse
   window.updateActiveNavTab = updateActiveNavTab;
+
+  // Enhanced version with better timing for SPA updates
+  function updateActiveNavTabDelay() {
+    // Wait a bit for DOM to stabilize
+    setTimeout(updateActiveNavTab, 50);
+  }
 
   // Run on initial load
   if (document.readyState === "complete" || document.readyState === "interactive") {
@@ -37,5 +43,11 @@
   }
 
   // Listen for SPA content updates
-  document.addEventListener("content-loaded", updateActiveNavTab);
+  document.addEventListener("content-loaded", updateActiveNavTabDelay);
+  
+  // Also listen for our custom SPA navigation event
+  document.addEventListener("spa-navigate", updateActiveNavTabDelay);
+  
+  // Additional safety: update on popstate (browser back/forward)
+  window.addEventListener("popstate", updateActiveNavTabDelay);
 })();

@@ -89,7 +89,8 @@
       mainContent.appendChild(skeletonEl);
     }
 
-    interceptNavClicks();
+    // Register custom click handler for all navigation links
+    setupCustomNavigationHandlers();
     
     window.addEventListener('popstate', function (e) {
       if (e.state && e.state.url) {
@@ -98,6 +99,56 @@
     });
 
     updateNavState();
+  }
+
+  // Setup custom SPA navigation handlers
+  function setupCustomNavigationHandlers() {
+    // Listen for our custom spa-navigate events
+    document.addEventListener('spa-navigate', function(e) {
+      if (e.detail && e.detail.path) {
+        navigateTo(e.detail.path, { replace: false });
+      }
+    });
+
+    // Intercept standard anchor clicks as backup mechanism
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest('a');
+      if (!link) return;
+      
+      var href = link.getAttribute('href');
+      if (!href) return;
+      
+      // Skip navigation interception for specific cases
+      if (href.indexOf('http') === 0 && href.indexOf(window.location.origin) !== 0) return;
+      if (href.indexOf('#') === 0 || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) return;
+      if (href.indexOf('/logout') !== -1) return;
+      if (link.hasAttribute('download') || link.target === '_blank') return;
+      if (href.indexOf('/download') !== -1) return;
+      if (link.closest('form') && link.type === 'submit') return;
+      if (link.getAttribute('data-no-spa')) return;
+      
+      // Check if it's a local internal link
+      if (href.startsWith('/') || (href.indexOf(window.location.origin) === 0 && href.indexOf(window.location.origin) !== -1)) {
+        e.preventDefault();  // Prevent default browser navigation
+        
+        var url = href.indexOf('/') === 0 ? href : new URL(href, window.location.origin).pathname;
+        navigateTo(url, { replace: false });
+      }
+    }, true); // Use capture phase to intercept early
+
+    // Handle form submissions appropriately
+    document.addEventListener('submit', function (e) {
+      var form = e.target;
+      if (!form) return;
+      
+      // Only intercept GET forms (search/filter forms) 
+      if (form.method && form.method.toLowerCase() === 'get') {
+        e.preventDefault();
+        var url = form.action || window.location.pathname;
+        navigateTo(url + '?' + new URLSearchParams(new FormData(form)).toString(), { replace: false });
+      }
+      // POST forms are NOT intercepted - they need to submit normally
+    });
   }
 
   // ── Skeleton Loaders ──
@@ -155,45 +206,6 @@
     return getSkeletonHTML();
   }
 
-  // ── Intercept Navigation Clicks ──
-  function interceptNavClicks() {
-    document.addEventListener('click', function (e) {
-      var link = e.target.closest('a');
-      if (!link) return;
-      
-      var href = link.getAttribute('href');
-      if (!href) return;
-      
-      if (href.indexOf('http') === 0 && href.indexOf(window.location.origin) !== 0) return;
-      if (href.indexOf('#') === 0 || href.indexOf('mailto:') === 0 || href.indexOf('tel:') === 0) return;
-      if (href.indexOf('/logout') !== -1) return;
-      if (link.hasAttribute('download') || link.target === '_blank') return;
-      if (href.indexOf('/download') !== -1) return;
-      if (link.closest('form') && link.type === 'submit') return;
-      if (link.getAttribute('data-no-spa')) return;
-      
-      e.preventDefault();
-      e.stopPropagation();
-      
-      var url = href.indexOf('/') === 0 ? href : new URL(href, window.location.origin).pathname;
-      navigateTo(url);
-    });
-
-    // Intercept form submissions to prevent full page reloads
-    document.addEventListener('submit', function (e) {
-      var form = e.target;
-      if (!form) return;
-      
-      // Only intercept forms that are GET forms (search/filter forms)
-      if (form.method && form.method.toLowerCase() === 'get') {
-        e.preventDefault();
-        var url = form.action || window.location.pathname;
-        navigateTo(url + '?' + new URLSearchParams(new FormData(form)).toString());
-      }
-      // POST forms are NOT intercepted - they need to submit normally
-    });
-  }
-
   // ── Navigate to a page (with caching) ──
   function navigateTo(url, options) {
     options = options || {};
@@ -209,6 +221,7 @@
     
     isLoading = true;
     
+    // Push state only when not replacing (to properly handle browser back button)
     if (!options.replace) {
       window.history.pushState({ url: fullUrl }, '', fullUrl);
     }
@@ -266,6 +279,7 @@
       isLoading = false;
       hideSkeleton();
       console.error('Navigation error:', err);
+      // If we cannot fetch via SPA, fall back to full page navigation
       window.location.href = fullUrl;
     });
   }
@@ -274,16 +288,26 @@
   function applyContent(html, url) {
     var content = extractContent(html);
     if (content) {
-      contentWrapper.innerHTML = content;
+      // Prevent blinking effect by using innerHTML instead of replaceChild 
+      // and ensure smooth animations
+      contentWrapper.style.transition = 'opacity 0.1s ease';
+      contentWrapper.style.opacity = '0';
+      
+      // Defer setting content to allow opacity transition to happen
+      setTimeout(() => {
+        contentWrapper.innerHTML = content;
+        contentWrapper.style.opacity = '1';
+        reExecuteScripts(contentWrapper);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        updateTitle(html);
+        document.dispatchEvent(new Event('content-loaded'));
+      }, 50); // Small delay to ensure opacity transition happens
+      
     } else {
+      // Fallback if content extraction fails
       window.location.href = url;
       return;
     }
-    
-    reExecuteScripts(contentWrapper);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    updateTitle(html);
-    document.dispatchEvent(new Event('content-loaded'));
   }
 
   // ── Extract content from full HTML page ──
