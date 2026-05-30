@@ -110,6 +110,15 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     safe_emp_name = (payroll.employee_name or "EMP").replace('/', '_').replace('\\', '_').replace(' ', '_')
     safe_month = (payroll.month or '').replace(' ', '_').replace('/', '_').replace('\\', '_')
     filename = f"{output_dir}/{safe_emp_name}_{safe_month}.pdf"
+    
+    # Remove existing file if present (fixes Permission denied on subsequent generates)
+    if os.path.exists(filename):
+        try:
+            os.chmod(filename, 0o666)
+            os.remove(filename)
+        except (PermissionError, OSError):
+            pass
+    
     doc = WatermarkedDocTemplate(
         filename, pagesize=A4, logo_path=logo_path,
         topMargin=0.35*inch, bottomMargin=0.35*inch,

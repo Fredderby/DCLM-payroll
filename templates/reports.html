@@ -72,7 +72,7 @@
             {% set colors = ['#4f46e5','#10b981','#f97316','#8b5cf6','#06b6d4','#f43f5e','#0f3460','#059669','#d97706','#7c3aed'] %}
             {% set ci = loop.index0 % 10 %}
             <div class="bar-item">
-              <div class="bar-fill" style="height:0%;background:{{ colors[ci] }};transition-delay:{{ loop.index0 * 0.1 }}s" data-height="{{ pct }}"></div>
+              <div class="bar-fill" data-height="{{ pct }}" data-color="{{ colors[ci] }}" data-delay="{{ loop.index0 * 0.1 }}"></div>
               <div class="bar-label">{{ m.month[-2:] if m.month and m.month|length >= 7 else m.month }}</div>
             </div>
             {% endfor %}
@@ -134,10 +134,14 @@
 <script>
 (function(){
   'use strict';
-  // Animate bar chart on load
   var bars = document.querySelectorAll('.bar-fill');
   bars.forEach(function(bar, i){
     var h = parseFloat(bar.dataset.height) || 0;
+    var color = bar.dataset.color || '#4f46e5';
+    var delay = parseFloat(bar.dataset.delay) || 0;
+    bar.style.background = color;
+    bar.style.height = '0%';
+    bar.style.transitionDelay = delay + 's';
     setTimeout(function(){
       bar.style.height = Math.max(h, 4) + '%';
     }, 200 + (i * 80));
