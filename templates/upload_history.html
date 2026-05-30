@@ -26,25 +26,20 @@
     <thead>
       <tr>
         <th>File Name</th>
-        <th>Month</th>
         <th>Upload Date</th>
-        <th>Employee Count</th>
-        <th>Total Payroll</th>
         <th>Status</th>
       </tr>
     </thead>
     <tbody>
       {% for u in uploads %}
       <tr>
-        <td><strong>{{ u.filename }}</strong></td>
-        <td><span class="badge badge-secondary">{{ u.month or 'N/A' }}</span></td>
+        <td><strong>{{ u.file_name or 'N/A' }}</strong></td>
         <td style="font-size: 13px;">{{ u.timestamp.strftime("%b %d, %Y %I:%M %p") if u.timestamp else 'N/A' }}</td>
-        <td><span class="badge badge-info">{{ u.employee_count or '0' }}</span></td>
-        <td><strong>GHS {{ "{:,.2f}".format(u.total_payroll or 0) }}</strong></td>
         <td>
-          {% if u.status == 'Completed' or u.status == 'Success' %}
+          {% set status = (u.status or '').lower() %}
+          {% if status in ('completed', 'success') %}
           <span class="badge badge-success">Completed</span>
-          {% elif u.status == 'Failed' or u.status == 'Error' %}
+          {% elif status in ('failed', 'error') %}
           <span class="badge badge-danger">Failed</span>
           {% else %}
           <span class="badge badge-warning">{{ u.status or 'Pending' }}</span>

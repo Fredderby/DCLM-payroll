@@ -3,11 +3,7 @@
 {% block title %}Reports - DCLM Payroll{% endblock %}
 
 {% block page_title %}Reports{% endblock %}
-{% block page_subtitle %}View payroll reports and analytics{% endblock %}
-
-{% block header_actions %}
-<button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
-{% endblock %}
+{% block page_subtitle %}Payroll summary, deductions, and analytics{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -34,11 +30,9 @@
       <div>
         <select class="form-control" style="width: auto; min-width: 140px; display: inline-block;" id="summaryMonthSelect">
           <option value="">Latest Month</option>
-          {% if months %}
-          {% for m in months %}
-          <option value="{{ m }}">{{ m }}</option>
+          {% for d in monthly_data %}
+          <option value="{{ d.month }}">{{ d.month }}</option>
           {% endfor %}
-          {% endif %}
         </select>
       </div>
     </div>
