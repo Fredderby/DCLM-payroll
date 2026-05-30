@@ -1,85 +1,66 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Settings - DCLM Payroll Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="/static/css/style.css" rel="stylesheet">
-    <link href="/static/css/progress.css" rel="stylesheet">
-    <style>
-      .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f0f2f5; }
-      .setting-item:last-child { border-bottom: none; }
-      .setting-item .label { font-size: 0.85rem; color: #333; }
-      .setting-item .label small { display: block; color: #888; font-size: 0.75rem; }
-      .setting-item .value { font-weight: 600; font-size: 0.85rem; color: #1a1a2e; }
-    </style>
-</head>
-<body>
-    <div class="app-wrapper">
-        {% include "partials/navigation.html" %}
-        <div class="main-content">
-            <div class="page-header"><h2><i class="fas fa-cog me-2" style="color:#0f3460;"></i>Email Settings</h2><p>Configure SMTP settings for sending payslip emails</p></div>
-            {% if message %}<div class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-check-circle me-2"></i> {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-            {% if error %}<div class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-            <div class="card-modern">
-                <div class="card-modern-header"><h5><i class="fas fa-server"></i> SMTP Configuration</h5><span class="badge {% if smtp_configured %}bg-success{% else %}bg-warning text-dark{% endif %} rounded-pill">{% if smtp_configured %}Connected{% else %}Disconnected{% endif %}</span></div>
-                <div class="card-modern-body">
-                    <p class="text-muted small mb-3">These settings are loaded from environment variables. Update your .env file to change them.</p>
-                    <form method="POST" action="/settings/email">
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-6"><div class="form-floating"><input type="text" class="form-control" id="smtp_server" name="smtp_server" value="{{ smtp_server }}" placeholder="smtp.gmail.com"><label><i class="fas fa-server me-1" style="color:#0f3460;"></i> SMTP Server</label></div></div>
-                            <div class="col-md-3"><div class="form-floating"><input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ smtp_port }}" placeholder="587"><label><i class="fas fa-plug me-1" style="color:#0f3460;"></i> Port</label></div></div>
-                            <div class="col-md-3"><div class="form-floating"><select class="form-select" id="smtp_security" name="smtp_security"><option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option></select><label><i class="fas fa-shield-alt me-1" style="color:#0f3460;"></i> Security</label></div></div>
-                        </div>
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-6"><div class="form-floating"><input type="email" class="form-control" id="smtp_username" name="smtp_username" value="{{ smtp_username }}" placeholder="you@gmail.com"><label><i class="fas fa-user me-1" style="color:#0f3460;"></i> Username / Email</label></div></div>
-                            <div class="col-md-6"><div class="form-floating"><input type="password" class="form-control" id="smtp_password" name="smtp_password" value="{{ smtp_password }}" placeholder="App password"><label><i class="fas fa-key me-1" style="color:#0f3460;"></i> Password</label></div></div>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-primary py-2 flex-fill" style="border-radius:12px;font-weight:600;background:linear-gradient(135deg,#1a365d,#2a4a7f);border:none;"><i class="fas fa-save me-2"></i> Save Settings</button>
-                            <button type="button" class="btn btn-outline-info py-2" style="border-radius:12px;font-weight:600;" onclick="testConnection()"><i class="fas fa-paper-plane me-2"></i> Test Connection</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-            <div class="card-modern">
-                <div class="card-modern-header"><h5><i class="fas fa-info-circle"></i> How to Get Gmail App Password</h5></div>
-                <div class="card-modern-body">
-                    <ol style="font-size:0.85rem;color:#555;padding-left:1.2rem;margin:0;">
-                        <li class="mb-1">Go to your <a href="https://myaccount.google.com/security" target="_blank">Google Account</a></li>
-                        <li class="mb-1">Enable <strong>2-Step Verification</strong></li>
-                        <li class="mb-1">Go to <strong>App Passwords</strong> (search in Google Account)</li>
-                        <li class="mb-1">Select <strong>Mail</strong> and your device, then <strong>Generate</strong></li>
-                        <li class="mb-1">Copy the 16-character password and paste it above</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/menu-tabs.js"></script>
-    <script src="/static/js/toast-notifications.js"></script>
-    <script src="/static/js/progress-system.js"></script>
-    <script>
-        async function testConnection() {
-            var btn = document.querySelector("[onclick*='testConnection']");
-            if (!btn) btn = document.querySelector("button.btn-outline-info");
-            if (!btn) return;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Testing...';
-            try {
-                var resp = await fetch("/settings/email/test", { method: "POST" });
-                var data = await resp.json();
-                if (resp.ok) { alert("Connection successful! SMTP server is responding."); }
-                else { alert("Test failed: " + (data.detail || data.message || "Unknown error")); }
-            } catch(e) { alert("Error: " + e.message); }
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i> Test Connection';
-        }
-    </script>
-    <script src="/static/js/spa-navigation.js"></script>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Email Settings - DCLM Payroll Management System{% endblock %}
+
+{% block content %}
+<div class="page-header"><h2><i class="fas fa-cog me-2" style="color:#0f3460;"></i>Email Settings</h2><p>Configure SMTP settings for sending payslip emails</p></div>
+{% if message %}<div class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-check-circle me-2"></i> {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if error %}<div class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+<div class="card-modern">
+  <div class="card-modern-header"><h5><i class="fas fa-server"></i> SMTP Configuration</h5><span class="badge {% if smtp_configured %}bg-success{% else %}bg-warning text-dark{% endif %} rounded-pill">{% if smtp_configured %}Connected{% else %}Disconnected{% endif %}</span></div>
+  <div class="card-modern-body">
+    <p class="text-muted small mb-3">These settings are loaded from environment variables. Update your .env file to change them.</p>
+    <form method="POST" action="/settings/email">
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><div class="form-floating"><input type="text" class="form-control" id="smtp_server" name="smtp_server" value="{{ smtp_server }}" placeholder="smtp.gmail.com"><label><i class="fas fa-server me-1" style="color:#0f3460;"></i> SMTP Server</label></div></div>
+        <div class="col-md-3"><div class="form-floating"><input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ smtp_port }}" placeholder="587"><label><i class="fas fa-plug me-1" style="color:#0f3460;"></i> Port</label></div></div>
+        <div class="col-md-3"><div class="form-floating"><select class="form-select" id="smtp_security" name="smtp_security"><option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option></select><label><i class="fas fa-shield-alt me-1" style="color:#0f3460;"></i> Security</label></div></div>
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-6"><div class="form-floating"><input type="email" class="form-control" id="smtp_username" name="smtp_username" value="{{ smtp_username }}" placeholder="you@gmail.com"><label><i class="fas fa-user me-1" style="color:#0f3460;"></i> Username / Email</label></div></div>
+        <div class="col-md-6"><div class="form-floating"><input type="password" class="form-control" id="smtp_password" name="smtp_password" value="{{ smtp_password }}" placeholder="App password"><label><i class="fas fa-key me-1" style="color:#0f3460;"></i> Password</label></div></div>
+      </div>
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary py-2 flex-fill" style="border-radius:12px;font-weight:600;background:linear-gradient(135deg,#1a365d,#2a4a7f);border:none;"><i class="fas fa-save me-2"></i> Save Settings</button>
+        <button type="button" class="btn btn-outline-info py-2" style="border-radius:12px;font-weight:600;" onclick="testConnection()"><i class="fas fa-paper-plane me-2"></i> Test Connection</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="card-modern">
+  <div class="card-modern-header"><h5><i class="fas fa-info-circle"></i> How to Get Gmail App Password</h5></div>
+  <div class="card-modern-body">
+    <ol style="font-size:0.85rem;color:#555;padding-left:1.2rem;margin:0;">
+      <li class="mb-1">Go to your <a href="https://myaccount.google.com/security" target="_blank">Google Account</a></li>
+      <li class="mb-1">Enable <strong>2-Step Verification</strong></li>
+      <li class="mb-1">Go to <strong>App Passwords</strong> (search in Google Account)</li>
+      <li class="mb-1">Select <strong>Mail</strong> and your device, then <strong>Generate</strong></li>
+      <li class="mb-1">Copy the 16-character password and paste it above</li>
+    </ol>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  async function testConnection() {
+    var btn = document.querySelector("[onclick*='testConnection']");
+    if (!btn) btn = document.querySelector("button.btn-outline-info");
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Testing...';
+    try {
+      var resp = await fetch("/settings/email/test", { method: "POST" });
+      var data = await resp.json();
+      if (resp.ok) { alert("Connection successful! SMTP server is responding."); }
+      else { alert("Test failed: " + (data.detail || data.message || "Unknown error")); }
+    } catch(e) { alert("Error: " + e.message); }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i> Test Connection';
+  }
+</script>
+<script src="/static/js/menu-tabs.js"></script>
+<script src="/static/js/toast-notifications.js"></script>
+<script src="/static/js/progress-system.js"></script>
+<script src="/static/js/spa-navigation.js"></script>
+{% endblock %}

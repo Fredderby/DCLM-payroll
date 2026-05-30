@@ -1,150 +1,95 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Loan Management - DCLM Payroll Management System</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-      rel="stylesheet"
-    />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="/static/css/style.css" rel="stylesheet" />
-    <link href="/static/css/progress.css" rel="stylesheet" />
-    <style>
-      * {
-        font-family: "Inter", sans-serif;
-      }
-      body {
-        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-        background-attachment: fixed;
-      }
-      .glass {
-        background: rgba(255, 255, 255, 0.92);
-        -webkit-backdrop-filter: blur(16px);
-        backdrop-filter: blur(16px);
-      }
-      .glass-sidebar {
-        background: rgba(15, 15, 35, 0.85);
-        -webkit-backdrop-filter: blur(20px);
-        backdrop-filter: blur(20px);
-      }
-      .sidebar-link {
-        transition: all 0.2s ease;
-      }
-      .sidebar-link:hover {
-        background: rgba(255, 255, 255, 0.08);
-        color: #fff;
-      }
-      .sidebar-link.active {
-        background: rgba(255, 255, 255, 0.12);
-        color: #fff;
-        font-weight: 600;
-      }
-      .loan-card {
-        transition: all 0.25s ease;
-      }
-      .loan-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      }
-      .progress-fill {
-        transition: width 0.5s ease;
-      }
-    </style>
-  </head>
-  <body class="min-h-screen">
-    <div class="app-wrapper">
-      {% include "partials/navigation.html" %}
-      <div class="main-content">
-        <div class="mb-6">
-          <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-            <i class="fas fa-hand-holding-usd text-blue-300"></i> Loan
-            Management
-          </h2>
-          <p class="text-blue-200/70 text-sm mt-1">
-            Record employee loan requests and track repayment details
-          </p>
-        </div>
-        {% if success %}
-        <div
-          class="mb-5 p-4 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 flex items-center gap-3 shadow-lg"
-        >
-          <i class="fas fa-check-circle text-emerald-400"></i> {{ success }}
-          <button
-            onclick="this.parentElement.remove()"
-            class="ml-auto text-emerald-300/70 hover:text-emerald-200"
-          >
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        {% endif %} {% if error %}
-        <div
-          class="mb-5 p-4 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 flex items-center gap-3 shadow-lg"
-        >
-          <i class="fas fa-exclamation-circle text-red-400"></i> {{ error }}
-          <button
-            onclick="this.parentElement.remove()"
-            class="ml-auto text-red-300/70 hover:text-red-200"
-          >
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-                {% endif %}
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-            <div class="text-2xl font-bold" style="color: #0f3460">
-              {{ stats.active_count }}
-            </div>
-            <div
-              class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-            >
-              Active Loans
-            </div>
-          </div>
-          <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-            <div class="text-2xl font-bold" style="color: #0f3460">
-              GHS {{ "{:,.2f}".format(stats.total_outstanding) }}
-            </div>
-            <div
-              class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-            >
-              Total Outstanding
-            </div>
-          </div>
-          <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-            <div class="text-2xl font-bold" style="color: #0f3460">
-              GHS {{ "{:,.2f}".format(stats.total_loaned) }}
-            </div>
-            <div
-              class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-            >
-              Total Loaned
-            </div>
-          </div>
-          <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-            <div class="text-2xl font-bold" style="color: #0f3460">
-              {{ stats.completed_count }}
-            </div>
-            <div
-              class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-            >
-              Completed
-            </div>
-          </div>
-        </div>
-        <!-- React mount for interactive loan management -->
-                <div id="loan-app-mount"></div>
-      </div>
-        </div>
-    <!-- Pass server data to React via JSON script elements -->
-        <script id="data-loan-employees" type="application/json">{{ employees_json|safe }}</script>
-    <script id="data-loan-loans" type="application/json">{{ loans_json|safe }}</script>
-    <script type="text/babel" src="/static/js/loans-page.jsx"></script>
-    <script src="/static/js/menu-tabs.js"></script>
-    <script src="/static/js/toast-notifications.js"></script>
-    <script src="/static/js/progress-system.js"></script>
-    <script src="/static/js/spa-navigation.js"></script>
-</body>
-</html>
+{% extends "base.html" %}
+
+{% block title %}Loan Management - DCLM Payroll Management System{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+    <i class="fas fa-hand-holding-usd text-blue-300"></i> Loan
+    Management
+  </h2>
+  <p class="text-blue-200/70 text-sm mt-1">
+    Record employee loan requests and track repayment details
+  </p>
+</div>
+{% if success %}
+<div
+  class="mb-5 p-4 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 flex items-center gap-3 shadow-lg"
+>
+  <i class="fas fa-check-circle text-emerald-400"></i> {{ success }}
+  <button
+    onclick="this.parentElement.remove()"
+    class="ml-auto text-emerald-300/70 hover:text-emerald-200"
+  >
+    <i class="fas fa-times"></i>
+  </button>
+</div>
+{% endif %} {% if error %}
+<div
+  class="mb-5 p-4 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 flex items-center gap-3 shadow-lg"
+>
+  <i class="fas fa-exclamation-circle text-red-400"></i> {{ error }}
+  <button
+    onclick="this.parentElement.remove()"
+    class="ml-auto text-red-300/70 hover:text-red-200"
+  >
+    <i class="fas fa-times"></i>
+  </button>
+</div>
+{% endif %}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+    <div class="text-2xl font-bold" style="color: #0f3460">
+      {{ stats.active_count }}
+    </div>
+    <div
+      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
+    >
+      Active Loans
+    </div>
+  </div>
+  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+    <div class="text-2xl font-bold" style="color: #0f3460">
+      GHS {{ "{:,.2f}".format(stats.total_outstanding) }}
+    </div>
+    <div
+      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
+    >
+      Total Outstanding
+    </div>
+  </div>
+  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+    <div class="text-2xl font-bold" style="color: #0f3460">
+      GHS {{ "{:,.2f}".format(stats.total_loaned) }}
+    </div>
+    <div
+      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
+    >
+      Total Loaned
+    </div>
+  </div>
+  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
+    <div class="text-2xl font-bold" style="color: #0f3460">
+      {{ stats.completed_count }}
+    </div>
+    <div
+      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
+    >
+      Completed
+    </div>
+  </div>
+</div>
+<!-- React mount for interactive loan management -->
+<div id="loan-app-mount"></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Pass server data to React via JSON script elements -->
+<script id="data-loan-employees" type="application/json">{{ employees_json|safe }}</script>
+<script id="data-loan-loans" type="application/json">{{ loans_json|safe }}</script>
+<script type="text/babel" src="/static/js/loans-page.jsx"></script>
+<script src="/static/js/menu-tabs.js"></script>
+<script src="/static/js/toast-notifications.js"></script>
+<script src="/static/js/progress-system.js"></script>
+<script src="/static/js/spa-navigation.js"></script>
+{% endblock %}

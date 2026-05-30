@@ -1,353 +1,306 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Send Payslips - DCLM Payroll Management System</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <link
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-      rel="stylesheet"
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link href="/static/css/style.css" rel="stylesheet" />
-    <link href="/static/css/progress.css" rel="stylesheet" />
-    <style>
-      .setting-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 0;
-        border-bottom: 1px solid #f0f2f5;
-      }
-      .setting-item:last-child {
-        border-bottom: none;
-      }
-      .setting-item .label {
-        font-size: 0.85rem;
-        color: #333;
-      }
-      .setting-item .label small {
-        display: block;
-        color: #888;
-        font-size: 0.75rem;
-      }
-      .setting-item .value {
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: #1a1a2e;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="app-wrapper">
-      {% include "partials/navigation.html" %}
-      <div class="main-content">
-        <div class="page-header">
-          <h2>
-            <i class="fas fa-envelope me-2" style="color: #0f3460"></i>Send
-            Payslips
-          </h2>
-          <p>Email payslips to employees by month</p>
-        </div>
-        {% if success %}
-        <div
-          class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"
-        >
-          <i class="fas fa-check-circle me-2"></i> {{ success }}<button
-            type="button"
-            class="btn-close"
-            data-bs-dismiss="alert"
-          ></button>
-        </div>
-        {% endif %} {% if error %}
-        <div
-          class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"
-        >
-          <i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button
-            type="button"
-            class="btn-close"
-            data-bs-dismiss="alert"
-          ></button>
-        </div>
-        {% endif %}
+{% extends "base.html" %}
 
-        <!-- SMTP Status -->
-        <div class="card-modern mb-3">
-          <div class="card-modern-header">
-            <h5><i class="fas fa-server"></i> Email Configuration</h5>
-            <span
-              class="badge {% if smtp_configured %}bg-success{% else %}bg-warning text-dark{% endif %} rounded-pill"
-            >
-              {% if smtp_configured %}SMTP Connected{% else %}SMTP Not
-              Configured{% endif %}
-            </span>
-          </div>
-          <div class="card-modern-body">
-            {% if not smtp_configured %}
-            <div
-              class="alert alert-warning border-0 rounded-3 py-2 mb-0"
-              style="font-size: 0.85rem; background: #fef3c7"
-            >
-              <i class="fas fa-exclamation-triangle me-1"></i> SMTP is not
-              configured. Please set up your email settings in
-              <a href="/settings/email">Email Settings</a> before sending
-              payslips.
-            </div>
-            {% else %}
-            <p class="text-muted small mb-0">
-              <i class="fas fa-check-circle text-success me-1"></i> SMTP server
-              is configured and ready.
-            </p>
-            {% endif %}
-          </div>
-        </div>
+{% block title %}Send Payslips - DCLM Payroll Management System{% endblock %}
 
-        <!-- Select Month & Send -->
-        <div class="card-modern mb-3">
+{% block content %}
+<div class="page-header">
+  <h2>
+    <i class="fas fa-envelope me-2" style="color: #0f3460"></i>Send
+    Payslips
+  </h2>
+  <p>Email payslips to employees by month</p>
+</div>
+{% if success %}
+<div
+  class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"
+>
+  <i class="fas fa-check-circle me-2"></i> {{ success }}<button
+    type="button"
+    class="btn-close"
+    data-bs-dismiss="alert"
+  ></button>
+</div>
+{% endif %} {% if error %}
+<div
+  class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"
+>
+  <i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button
+    type="button"
+    class="btn-close"
+    data-bs-dismiss="alert"
+  ></button>
+</div>
+{% endif %}
 
-          <div class="card-modern-header">
-            <h5><i class="fas fa-paper-plane"></i> Send Payslips by Month</h5>
-          </div>
-          <div class="card-modern-body">
-            <div class="flex items-end gap-4 flex-wrap">
-              <div class="flex-1 min-w-[200px]">
-                <label class="block text-xs font-semibold text-gray-600 mb-1"><i class="fas fa-calendar mr-1" style="color:#0f3460"></i> Payroll Month</label>
-                <select class="form-select" id="month_select" name="month" onchange="window.location.href='/payslips/send?month='+encodeURIComponent(this.value)+'&filter_by='+encodeURIComponent(document.getElementById('filter_select').value)">
-                  <option value="">-- Select Month --</option>
-                  {% for m in months %}
-                  <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="flex-1 min-w-[150px]">
-                <label class="block text-xs font-semibold text-gray-600 mb-1"><i class="fas fa-filter mr-1" style="color:#0f3460"></i> Filter</label>
-                <select class="form-select" id="filter_select" name="filter_by" onchange="window.location.href='/payslips/send?month='+encodeURIComponent(document.getElementById('month_select').value)+'&filter_by='+encodeURIComponent(this.value)">
-                  <option value="all" {% if filter_by == 'all' %}selected{% endif %}>All Employees</option>
-                  <option value="with_email" {% if filter_by == 'with_email' %}selected{% endif %}>With Email</option>
-                  <option value="no_email" {% if filter_by == 'no_email' %}selected{% endif %}>No Email</option>
-                </select>
-              </div>
-              <div class="shrink-0">
-                {% if selected_month and payslips %}
-                <form method="POST" action="/payslips/send-all" style="display:inline-block">
-                  <input type="hidden" name="month" value="{{ selected_month }}" />
-                  <button type="submit" class="px-6 py-2.5 rounded-xl font-semibold text-sm text-white shadow-lg {{ 'opacity-50 cursor-not-allowed' if not smtp_configured }}" {% if not smtp_configured %}disabled{% endif %}
-                    style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"
-                    onclick="return confirm('Send payslips to all {{ payslips|length }} employees for {{ selected_month }}?')">
-                    <i class="fas fa-paper-plane mr-2"></i> Send All ({{ payslips|length }})
-                  </button>
-                </form>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-        </div>
+<!-- SMTP Status -->
+<div class="card-modern mb-3">
+  <div class="card-modern-header">
+    <h5><i class="fas fa-server"></i> Email Configuration</h5>
+    <span
+      class="badge {% if smtp_configured %}bg-success{% else %}bg-warning text-dark{% endif %} rounded-pill"
+    >
+      {% if smtp_configured %}SMTP Connected{% else %}SMTP Not
+      Configured{% endif %}
+    </span>
+  </div>
+  <div class="card-modern-body">
+    {% if not smtp_configured %}
+    <div
+      class="alert alert-warning border-0 rounded-3 py-2 mb-0"
+      style="font-size: 0.85rem; background: #fef3c7"
+    >
+      <i class="fas fa-exclamation-triangle me-1"></i> SMTP is not
+      configured. Please set up your email settings in
+      <a href="/settings/email">Email Settings</a> before sending
+      payslips.
+    </div>
+    {% else %}
+    <p class="text-muted small mb-0">
+      <i class="fas fa-check-circle text-success me-1"></i> SMTP server
+      is configured and ready.
+    </p>
+    {% endif %}
+  </div>
+</div>
 
-        <!-- Payslip List -->
+<!-- Select Month & Send -->
+<div class="card-modern mb-3">
+
+  <div class="card-modern-header">
+    <h5><i class="fas fa-paper-plane"></i> Send Payslips by Month</h5>
+  </div>
+  <div class="card-modern-body">
+    <div class="flex items-end gap-4 flex-wrap">
+      <div class="flex-1 min-w-[200px]">
+        <label class="block text-xs font-semibold text-gray-600 mb-1"><i class="fas fa-calendar mr-1" style="color:#0f3460"></i> Payroll Month</label>
+        <select class="form-select" id="month_select" name="month" onchange="window.location.href='/payslips/send?month='+encodeURIComponent(this.value)+'&filter_by='+encodeURIComponent(document.getElementById('filter_select').value)">
+          <option value="">-- Select Month --</option>
+          {% for m in months %}
+          <option value="{{ m }}" {% if selected_month == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex-1 min-w-[150px]">
+        <label class="block text-xs font-semibold text-gray-600 mb-1"><i class="fas fa-filter mr-1" style="color:#0f3460"></i> Filter</label>
+        <select class="form-select" id="filter_select" name="filter_by" onchange="window.location.href='/payslips/send?month='+encodeURIComponent(document.getElementById('month_select').value)+'&filter_by='+encodeURIComponent(this.value)">
+          <option value="all" {% if filter_by == 'all' %}selected{% endif %}>All Employees</option>
+          <option value="with_email" {% if filter_by == 'with_email' %}selected{% endif %}>With Email</option>
+          <option value="no_email" {% if filter_by == 'no_email' %}selected{% endif %}>No Email</option>
+        </select>
+      </div>
+      <div class="shrink-0">
         {% if selected_month and payslips %}
-        <div class="card-modern mb-3">
-          <div class="card-modern-header">
-            <h5>
-              <i class="fas fa-file-invoice"></i> Payslips for {{ selected_month
-              }}
-            </h5>
-            <span class="badge bg-light text-dark rounded-pill"
-              >{{ payslips|length }} employees</span
-            >
-          </div>
-          <div class="card-modern-body p-0">
-            <table class="table-modern">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Net Salary</th>
-                  <th>Email</th>
-                  <th>PDF</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for p in payslips %}
-                <tr>
-                  <td>
-                    <strong
-                      >{{ p.employee_obj.name if p.employee_obj else
-                      p.employee_name }}</strong
-                    ><br /><small class="text-muted"
-                      >{{ p.employee_obj.employee_number if p.employee_obj else
-                      '' }}</small
-                    >
-                  </td>
-                  <td>
-                    <strong
-                      >GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong
-                    >
-                  </td>
-                  <td>
-                    {% if p.employee_obj and p.employee_obj.email %}<span
-                      class="text-success"
-                      ><i class="fas fa-check-circle"></i> {{
-                      p.employee_obj.email }}</span
-                    >{% else %}<span class="text-muted">No email</span>{% endif
-                    %}
-                  </td>
-                  <td>
-                    {% if p.pdf_generated %}<span class="badge bg-success"
-                      >Ready</span
-                    >{% else %}<span class="badge bg-warning text-dark"
-                      >Pending</span
-                    >{% endif %}
-                  </td>
-                  <td>
-                    <span
-                      class="email-status {% if p.email_sent %}sent{% else %}pending{% endif %}"
-                      >{% if p.email_sent %}Sent{% else %}Pending{% endif
-                      %}</span
-                    >
-                  </td>
-                  <td>
-                    {% if p.employee_obj and p.employee_obj.email and
-                    p.pdf_generated %}
-                    <form
-                      method="POST"
-                      action="/payslips/{{ p.id }}/send-email"
-                      style="display: inline"
-                      onsubmit="return confirm('Send payslip to {{ p.employee_obj.name }}?')"
-                    >
-                      <button
-                        type="submit"
-                        class="btn btn-sm btn-outline-primary"
-                        style="border-radius: 8px"
-                        title="Send Now"
-                      >
-                        <i class="fas fa-paper-plane"></i>
-                      </button>
-                    </form>
-                    {% endif %} {% if p.pdf_generated %}
-                    <a
-                      href="/payslips/{{ p.id }}/download"
-                      class="btn btn-sm btn-outline-secondary"
-                      style="border-radius: 8px"
-                      title="Download PDF"
-                      ><i class="fas fa-download"></i
-                    ></a>
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {% elif selected_month and not payslips %}
-        <div class="card-modern">
-          <div class="card-modern-body text-center py-5">
-            <i
-              class="fas fa-file-invoice"
-              style="font-size: 2.5rem; color: #ddd"
-            ></i>
-            <p class="mt-3 text-muted">
-              No payslips found for <strong>{{ selected_month }}</strong>.
-            </p>
-            <a href="/upload" class="btn btn-primary btn-sm"
-              ><i class="fas fa-upload me-1"></i> Upload Payroll</a
-            >
-          </div>
-        </div>
-        {% elif not selected_month %}
-        <div class="card-modern">
-          <div class="card-modern-body text-center py-5">
-            <i
-              class="fas fa-hand-pointer"
-              style="font-size: 2.5rem; color: #ddd"
-            ></i>
-            <p class="mt-3 text-muted">
-              Select a payroll month above to view and send payslips.
-            </p>
-          </div>
-        </div>
+        <form method="POST" action="/payslips/send-all" style="display:inline-block">
+          <input type="hidden" name="month" value="{{ selected_month }}" />
+          <button type="submit" class="px-6 py-2.5 rounded-xl font-semibold text-sm text-white shadow-lg {{ 'opacity-50 cursor-not-allowed' if not smtp_configured }}" {% if not smtp_configured %}disabled{% endif %}
+            style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"
+            onclick="return confirm('Send payslips to all {{ payslips|length }} employees for {{ selected_month }}?')">
+            <i class="fas fa-paper-plane mr-2"></i> Send All ({{ payslips|length }})
+          </button>
+        </form>
         {% endif %}
-
-        <!-- Email Logs -->
-        <div class="card-modern">
-          <div class="card-modern-header">
-            <h5><i class="fas fa-history"></i> Recent Email Activity</h5>
-          </div>
-          <div class="card-modern-body p-0">
-            {% if email_logs %}
-            <table class="table-modern">
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Status</th>
-                  <th>Sent At</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for log in email_logs %}
-                <tr>
-                  <td>{{ log.employee_name or 'N/A' }}</td>
-                  <td>
-                    <span
-                      class="email-status {% if log.status == 'sent' %}sent{% elif log.status == 'failed' %}failed{% else %}pending{% endif %}"
-                      >{{ log.status|capitalize }}</span
-                    >
-                  </td>
-                  <td>
-                    <small class="text-muted"
-                      >{{ log.sent_at.strftime('%Y-%m-%d %H:%M') if log.sent_at
-                      else 'N/A' }}</small
-                    >
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-            {% else %}
-            <div class="text-center py-4">
-              <i class="fas fa-inbox" style="font-size: 2rem; color: #ddd"></i>
-              <p class="mt-2 text-muted small">No email activity yet.</p>
-            </div>
-            {% endif %}
-          </div>
-        </div>
       </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/menu-tabs.js"></script>
-    <script src="/static/js/toast-notifications.js"></script>
-    <script src="/static/js/progress-system.js"></script>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      // Read flash messages from query params and show as toasts
-      var params = new URLSearchParams(window.location.search);
-      var status = params.get('email_status');
-      var message = params.get('email_message');
-      if (status && message && typeof DCLMToast !== 'undefined') {
-        var decoded = decodeURIComponent(message);
-        if (status === 'success') {
-          DCLMToast.success('Success', decoded);
-        } else {
-          DCLMToast.error('Error', decoded);
-        }
-        // Clean URL without reload
-        if (window.history.replaceState) {
-          var url = new URL(window.location);
-          url.searchParams.delete('email_status');
-          url.searchParams.delete('email_message');
-          window.history.replaceState({}, document.title, url.toString());
-        }
-      }
-    });
-    </script>
-      <script src="/static/js/spa-navigation.js"></script>
-</body>
-</html>
+  </div>
+</div>
+
+<!-- Payslip List -->
+{% if selected_month and payslips %}
+<div class="card-modern mb-3">
+  <div class="card-modern-header">
+    <h5>
+      <i class="fas fa-file-invoice"></i> Payslips for {{ selected_month
+      }}
+    </h5>
+    <span class="badge bg-light text-dark rounded-pill"
+      >{{ payslips|length }} employees</span
+    >
+  </div>
+  <div class="card-modern-body p-0">
+    <table class="table-modern">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Net Salary</th>
+          <th>Email</th>
+          <th>PDF</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in payslips %}
+        <tr>
+          <td>
+            <strong
+              >{{ p.employee_obj.name if p.employee_obj else
+              p.employee_name }}</strong
+            ><br /><small class="text-muted"
+              >{{ p.employee_obj.employee_number if p.employee_obj else
+              '' }}</small
+            >
+          </td>
+          <td>
+            <strong
+              >GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong
+            >
+          </td>
+          <td>
+            {% if p.employee_obj and p.employee_obj.email %}<span
+              class="text-success"
+              ><i class="fas fa-check-circle"></i> {{
+              p.employee_obj.email }}</span
+            >{% else %}<span class="text-muted">No email</span>{% endif
+            %}
+          </td>
+          <td>
+            {% if p.pdf_generated %}<span class="badge bg-success"
+              >Ready</span
+            >{% else %}<span class="badge bg-warning text-dark"
+              >Pending</span
+            >{% endif %}
+          </td>
+          <td>
+            <span
+              class="email-status {% if p.email_sent %}sent{% else %}pending{% endif %}"
+              >{% if p.email_sent %}Sent{% else %}Pending{% endif
+              %}</span
+            >
+          </td>
+          <td>
+            {% if p.employee_obj and p.employee_obj.email and
+            p.pdf_generated %}
+            <form
+              method="POST"
+              action="/payslips/{{ p.id }}/send-email"
+              style="display: inline"
+              onsubmit="return confirm('Send payslip to {{ p.employee_obj.name }}?')"
+            >
+              <button
+                type="submit"
+                class="btn btn-sm btn-outline-primary"
+                style="border-radius: 8px"
+                title="Send Now"
+              >
+                <i class="fas fa-paper-plane"></i>
+              </button>
+            </form>
+            {% endif %} {% if p.pdf_generated %}
+            <a
+              href="/payslips/{{ p.id }}/download"
+              class="btn btn-sm btn-outline-secondary"
+              style="border-radius: 8px"
+              title="Download PDF"
+              ><i class="fas fa-download"></i
+            ></a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif selected_month and not payslips %}
+<div class="card-modern">
+  <div class="card-modern-body text-center py-5">
+    <i
+      class="fas fa-file-invoice"
+      style="font-size: 2.5rem; color: #ddd"
+    ></i>
+    <p class="mt-3 text-muted">
+      No payslips found for <strong>{{ selected_month }}</strong>.
+    </p>
+    <a href="/upload" class="btn btn-primary btn-sm"
+      ><i class="fas fa-upload me-1"></i> Upload Payroll</a
+    >
+  </div>
+</div>
+{% elif not selected_month %}
+<div class="card-modern">
+  <div class="card-modern-body text-center py-5">
+    <i
+      class="fas fa-hand-pointer"
+      style="font-size: 2.5rem; color: #ddd"
+    ></i>
+    <p class="mt-3 text-muted">
+      Select a payroll month above to view and send payslips.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Email Logs -->
+<div class="card-modern">
+  <div class="card-modern-header">
+    <h5><i class="fas fa-history"></i> Recent Email Activity</h5>
+  </div>
+  <div class="card-modern-body p-0">
+    {% if email_logs %}
+    <table class="table-modern">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Status</th>
+          <th>Sent At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in email_logs %}
+        <tr>
+          <td>{{ log.employee_name or 'N/A' }}</td>
+          <td>
+            <span
+              class="email-status {% if log.status == 'sent' %}sent{% elif log.status == 'failed' %}failed{% else %}pending{% endif %}"
+              >{{ log.status|capitalize }}</span
+            >
+          </td>
+          <td>
+            <small class="text-muted"
+              >{{ log.sent_at.strftime('%Y-%m-%d %H:%M') if log.sent_at
+              else 'N/A' }}</small
+            >
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-4">
+      <i class="fas fa-inbox" style="font-size: 2rem; color: #ddd"></i>
+      <p class="mt-2 text-muted small">No email activity yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/menu-tabs.js"></script>
+<script src="/static/js/toast-notifications.js"></script>
+<script src="/static/js/progress-system.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Read flash messages from query params and show as toasts
+  var params = new URLSearchParams(window.location.search);
+  var status = params.get('email_status');
+  var message = params.get('email_message');
+  if (status && message && typeof DCLMToast !== 'undefined') {
+    var decoded = decodeURIComponent(message);
+    if (status === 'success') {
+      DCLMToast.success('Success', decoded);
+    } else {
+      DCLMToast.error('Error', decoded);
+    }
+    // Clean URL without reload
+    if (window.history.replaceState) {
+      var url = new URL(window.location);
+      url.searchParams.delete('email_status');
+      url.searchParams.delete('email_message');
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  }
+});
+</script>
+<script src="/static/js/spa-navigation.js"></script>
+{% endblock %}
