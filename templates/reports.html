@@ -1,127 +1,283 @@
 {% extends "base.html" %}
 
-{% block title %}Payroll Reports - DCLM Payroll Management System{% endblock %}
+{% block title %}Reports - DCLM Payroll{% endblock %}
+
+{% block page_title %}Reports{% endblock %}
+{% block page_subtitle %}View payroll reports and analytics{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-secondary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> Print</button>
+{% endblock %}
 
 {% block content %}
-<div class="mb-6 fade-in">
-  <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-chart-bar text-blue-300"></i> Payroll Reports</h2>
-  <p class="text-blue-200/70 text-sm mt-1">Payroll summaries, monthly breakdowns and statistics</p>
+{% if error %}
+<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+{% endif %}
+{% if success %}
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
+{% endif %}
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab active" data-tab="summary">Summary Report</button>
+  <button class="tab" data-tab="deductions">Deductions Report</button>
+  <button class="tab" data-tab="departments">Department Report</button>
+  <button class="tab" data-tab="loans">Loans Report</button>
 </div>
-{% if error %}<div class="mb-5 p-4 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 flex items-center gap-3 shadow-lg fade-in"><i class="fas fa-exclamation-circle text-red-400"></i> {{ error }}<button onclick="this.parentElement.remove()" class="ml-auto text-red-300/70 hover:text-red-200"><i class="fas fa-times"></i></button></div>{% endif %}
-<!-- Stats -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 fade-in" style="animation-delay:0.1s">
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);color:#4f46e5"><i class="fas fa-file-invoice"></i></div></div>
-    <div class="text-2xl font-bold" style="color:#0f3460">{{ stats.total_records or 0 }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Records</div>
-  </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);color:#10b981"><i class="fas fa-users"></i></div></div>
-    <div class="text-2xl font-bold" style="color:#0f3460">{{ stats.total_employees or 0 }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Employees</div>
-  </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#fff7ed,#ffedd5);color:#f97316"><i class="fas fa-coins"></i></div></div>
-    <div class="text-2xl font-bold" style="color:#0f3460">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Payroll</div>
-  </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe);color:#8b5cf6"><i class="fas fa-calculator"></i></div></div>
-    <div class="text-2xl font-bold" style="color:#0f3460">GHS {{ "{:,.2f}".format(stats.avg_net or 0) }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Avg Net Salary</div>
-  </div>
-</div>
-<!-- Chart + Monthly Data -->
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6 fade-in" style="animation-delay:0.15s">
-  <div class="lg:col-span-3 rounded-2xl glass border border-white/20 shadow-lg overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
-      <i class="fas fa-chart-bar text-blue-800"></i>
-      <h5 class="font-bold text-sm text-gray-800">Monthly Payroll Summary</h5>
-    </div>
-    <div class="p-6">
-      {% if monthly_data %}
-      <div class="bar-chart" id="barChart">
-        {% set max_total = monthly_data|map(attribute='total')|max or 1 %}
-        {% for m in monthly_data %}
-        {% set pct = (m.total / max_total * 100) if max_total > 0 else 0 %}
-        {% set colors = ['#4f46e5','#10b981','#f97316','#8b5cf6','#06b6d4','#f43f5e','#0f3460','#059669','#d97706','#7c3aed'] %}
-        {% set ci = loop.index0 % 10 %}
-        <div class="bar-item">
-          <div class="bar-fill" data-height="{{ pct }}" data-color="{{ colors[ci] }}" data-delay="{{ loop.index0 * 0.1 }}"></div>
-          <div class="bar-label">{{ m.month[-2:] if m.month and m.month|length >= 7 else m.month }}</div>
-        </div>
-        {% endfor %}
+
+<!-- Tab Content -->
+
+<div class="tab-content active" id="tab-summary">
+  <div class="card">
+    <div class="card-header">
+      <h4><i class="fas fa-chart-pie"></i> Payroll Summary</h4>
+      <div>
+        <select class="form-control" style="width: auto; min-width: 140px; display: inline-block;" id="summaryMonthSelect">
+          <option value="">Latest Month</option>
+          {% if months %}
+          {% for m in months %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+          {% endif %}
+        </select>
       </div>
-      <div class="mt-6 overflow-x-auto">
-        <table class="w-full text-xs">
-          <thead><tr class="text-left text-gray-500 uppercase tracking-wider"><th class="pb-2 font-semibold">Month</th><th class="pb-2 font-semibold text-right">Records</th><th class="pb-2 font-semibold text-right">Total Payroll</th><th class="pb-2 font-semibold text-right">Avg/Employee</th></tr></thead>
+    </div>
+    <div class="card-body">
+      <div class="stats-grid mb-4">
+        <div class="stat-card">
+          <div class="stat-card-icon blue"><i class="fas fa-users"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number" id="summaryEmployees">{{ stats.total_employees or 0 }}</div>
+            <div class="stat-label">Employees</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon green"><i class="fas fa-money-bill-wave"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number" id="summaryGross">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div>
+            <div class="stat-label">Gross Payroll</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon orange"><i class="fas fa-minus-circle"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number" id="summaryDeductions">GHS 0.00</div>
+            <div class="stat-label">Total Deductions</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon purple"><i class="fas fa-wallet"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number" id="summaryNet">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div>
+            <div class="stat-label">Net Payroll</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-container" id="summaryTable">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Basic</th>
+              <th>Allowances</th>
+              <th>Gross</th>
+              <th>PAYE</th>
+              <th>Tithe</th>
+              <th>Deductions</th>
+              <th>Net Salary</th>
+            </tr>
+          </thead>
           <tbody>
-            {% for m in monthly_data %}
-            <tr class="border-t border-gray-100"><td class="py-2.5 font-medium">{{ m.month }}</td><td class="py-2.5 text-right">{{ m.count }}</td><td class="py-2.5 text-right font-semibold">GHS {{ "{:,.2f}".format(m.total) }}</td><td class="py-2.5 text-right">GHS {{ "{:,.2f}".format(m.total / m.count) if m.count > 0 else '0.00' }}</td></tr>
+            {% if monthly_data %}
+            {% for d in monthly_data %}
+            <tr>
+              <td><strong>{{ d.month }}</strong></td>
+              <td>-</td>
+              <td>-</td>
+              <td>GHS {{ "{:,.2f}".format(d.total or 0) }}</td>
+              <td>-</td>
+              <td>-</td>
+              <td>-</td>
+              <td><strong>GHS {{ "{:,.2f}".format(d.total or 0) }}</strong></td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="8"><div class="empty-state"><p style="color: var(--text-muted);">No summary data available. Upload payroll first.</p></div></td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+        {% if not summary_data.details %}
+        <div class="empty-state">
+          <p style="color: var(--text-muted);">No summary data available. Upload payroll first.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-deductions">
+  <div class="card">
+    <div class="card-header">
+      <h4><i class="fas fa-calculator"></i> Deductions Breakdown</h4>
+    </div>
+    <div class="card-body">
+      {% if stats %}
+      <div class="stats-grid mb-4">
+        <div class="stat-card">
+          <div class="stat-card-icon orange"><i class="fas fa-percentage"></i></div>
+          <div class="stat-card-content">
+        <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Total PAYE Tax</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon purple"><i class="fas fa-church"></i></div>
+          <div class="stat-card-content">
+        <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Total Tithe</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon red"><i class="fas fa-file-invoice"></i></div>
+          <div class="stat-card-content">
+        <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Other Deductions</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon green"><i class="fas fa-hand-holding-heart"></i></div>
+          <div class="stat-card-content">
+        <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Employer Contributions</div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-state-icon"><i class="fas fa-calculator"></i></div>
+        <h4>No Deduction Data</h4>
+        <p>Upload payroll to see deduction breakdown.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-departments">
+  <div class="card">
+    <div class="card-header">
+      <h4><i class="fas fa-building"></i> Department Breakdown</h4>
+    </div>
+    <div class="card-body">
+      {% if monthly_data %}
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Department</th>
+              <th>Employees</th>
+              <th>Total Gross</th>
+              <th>Total Net</th>
+              <th>Avg Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dept in monthly_data %}
+            <tr>
+              <td><strong>{{ dept.month }}</strong></td>
+              <td><span class="badge badge-info">{{ dept.count }}</span></td>
+              <td>GHS {{ "{:,.2f}".format(dept.total or 0) }}</td>
+              <td><strong>GHS {{ "{:,.2f}".format(dept.total or 0) }}</strong></td>
+              <td>GHS 0.00</td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
       {% else %}
-      <div class="text-center py-12"><i class="fas fa-chart-line text-4xl text-gray-300 mb-3"></i><p class="text-gray-400">No payroll data yet. Upload payroll to see reports.</p><a href="/upload" class="inline-block mt-3 px-5 py-2 rounded-xl font-semibold text-white text-sm" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"><i class="fas fa-upload mr-1"></i> Upload</a></div>
+      <div class="empty-state">
+        <p style="color: var(--text-muted);">No department data available.</p>
+      </div>
       {% endif %}
     </div>
   </div>
-  <div class="lg:col-span-2 rounded-2xl glass border border-white/20 shadow-lg overflow-hidden">
-    <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
-      <i class="fas fa-info-circle text-blue-800"></i>
-      <h5 class="font-bold text-sm text-gray-800">Insights</h5>
+</div>
+
+<div class="tab-content" id="tab-loans">
+  <div class="card">
+    <div class="card-header">
+      <h4><i class="fas fa-hand-holding-usd"></i> Loans Report</h4>
     </div>
-    <div class="p-6">
-      {% if monthly_data %}
-      {% set total_employees = stats.total_employees or 0 %}
-      {% set total_records = stats.total_payroll or 0 %}
-      {% set avg = stats.avg_net or 0 %}
-      {% set latest_month = monthly_data[0].month if monthly_data else 'N/A' %}
-      {% set latest_total = monthly_data[0].total if monthly_data else 0 %}
-      <div class="space-y-4">
-        <div class="p-4 rounded-xl bg-blue-50 border border-blue-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-calendar text-blue-600 text-xs"></i><span class="text-xs font-semibold text-blue-800">Latest Month</span></div><div class="text-lg font-bold" style="color:#0f3460">{{ latest_month }}</div><div class="text-xs text-gray-500">GHS {{ "{:,.2f}".format(latest_total) }} total payroll</div></div>
-        <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-users text-emerald-600 text-xs"></i><span class="text-xs font-semibold text-emerald-800">Employee Count</span></div><div class="text-lg font-bold text-emerald-600">{{ total_employees }}</div><div class="text-xs text-gray-500">{{ monthly_data|length }} months of payroll history</div></div>
-        <div class="p-4 rounded-xl bg-amber-50 border border-amber-100"><div class="flex items-center gap-2 mb-1"><i class="fas fa-coins text-amber-600 text-xs"></i><span class="text-xs font-semibold text-amber-800">Average Net Salary</span></div><div class="text-lg font-bold text-amber-600">GHS {{ "{:,.2f}".format(avg) }}</div><div class="text-xs text-gray-500">Across {{ stats.total_records or 0 }} records</div></div>
+    <div class="card-body">
+      {% if stats %}
+      <div class="stats-grid mb-4">
+        <div class="stat-card">
+          <div class="stat-card-icon blue"><i class="fas fa-hand-holding-usd"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Total Loaned</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon green"><i class="fas fa-check-circle"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Total Repaid</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon red"><i class="fas fa-balance-scale"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number">GHS 0.00</div>
+            <div class="stat-label">Outstanding</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-icon orange"><i class="fas fa-users"></i></div>
+          <div class="stat-card-content">
+            <div class="stat-number">0</div>
+            <div class="stat-label">Active Borrowers</div>
+          </div>
+        </div>
       </div>
       {% else %}
-      <div class="text-center py-12"><i class="fas fa-lightbulb text-4xl text-gray-300 mb-3"></i><p class="text-gray-400 text-sm">Upload payroll data to see insights.</p></div>
+      <div class="empty-state">
+        <p style="color: var(--text-muted);">No loan data available.</p>
+      </div>
       {% endif %}
     </div>
   </div>
 </div>
-<!-- Export -->
-{% if monthly_data %}
-<div class="rounded-2xl glass border border-white/20 shadow-lg fade-in" style="animation-delay:0.2s">
-  <div class="px-6 py-4 border-b border-gray-200/80 flex items-center gap-2">
-    <i class="fas fa-download text-blue-800"></i>
-    <h5 class="font-bold text-sm text-gray-800">Export Options</h5>
-  </div>
-  <div class="p-6 flex flex-wrap gap-3">
-    <a href="/reports/export?format=pdf" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#dc2626,#ef4444)"><i class="fas fa-file-pdf mr-2"></i> Export PDF</a>
-    <a href="/reports/export?format=csv" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#059669,#10b981)"><i class="fas fa-file-csv mr-2"></i> Export CSV</a>
-    <a href="/reports/export?format=xlsx" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"><i class="fas fa-file-excel mr-2"></i> Export Excel</a>
-  </div>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-(function(){
-  'use strict';
-  var bars = document.querySelectorAll('.bar-fill');
-  bars.forEach(function(bar, i){
-    var h = parseFloat(bar.dataset.height) || 0;
-    var color = bar.dataset.color || '#4f46e5';
-    var delay = parseFloat(bar.dataset.delay) || 0;
-    bar.style.background = color;
-    bar.style.height = '0%';
-    bar.style.transitionDelay = delay + 's';
-    setTimeout(function(){
-      bar.style.height = Math.max(h, 4) + '%';
-    }, 200 + (i * 80));
+document.addEventListener('DOMContentLoaded', function() {
+  // Tab switching
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var tabId = this.getAttribute('data-tab');
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      this.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(function(tc) { tc.classList.remove('active'); });
+      var target = document.getElementById('tab-' + tabId);
+      if (target) target.classList.add('active');
+    });
   });
-})();
+
+  // Summary month filter
+  var summarySelect = document.getElementById('summaryMonthSelect');
+  if (summarySelect) {
+    summarySelect.addEventListener('change', function() {
+      var month = this.value;
+      if (month) {
+        window.location.href = '/reports?month=' + encodeURIComponent(month);
+      }
+    });
+  }
+});
 </script>
-<script src="/static/js/menu-tabs.js"></script>
-<script src="/static/js/toast-notifications.js"></script>
-<script src="/static/js/progress-system.js"></script>
-<script src="/static/js/spa-navigation.js"></script>
 {% endblock %}

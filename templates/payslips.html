@@ -1,232 +1,194 @@
 {% extends "base.html" %}
 
-{% block title %}Payslips - DCLM Payroll Management System{% endblock %}
+{% block title %}Payslips - DCLM Payroll{% endblock %}
+
+{% block page_title %}Payslips{% endblock %}
+{% block page_subtitle %}View and manage employee payslips{% endblock %}
+
+{% block header_actions %}
+<select class="form-control" style="width: auto; min-width: 140px;" id="monthSelectPayslip">
+  <option value="">All Months</option>
+  {% if months %}
+  {% for m in months %}
+  <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+  {% endfor %}
+  {% endif %}
+</select>
+<button class="btn btn-secondary btn-sm" id="generateAllBtn"><i class="fas fa-file-pdf"></i> Generate All PDFs</button>
+{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h2><i class="fas fa-file-invoice me-2" style="color:#0f3460"></i>Payslips</h2>
-  <p>View, generate and download employee payslips</p>
-</div>
-{% if message %}<div class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-check-circle me-2"></i> {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-{% if error %}<div class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-<!-- Stats + Filters -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg"><div class="text-2xl font-bold" style="color:#0f3460">{{ payslips|length }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Payslips</div></div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg"><div class="text-2xl font-bold text-emerald-600">GHS {{ "{:,.2f}".format(payslips|sum(attribute='net_salary')) if payslips else '0.00' }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Total Net Salary</div></div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg"><div class="text-2xl font-bold" style="color:#0f3460">{{ payslips|selectattr('pdf_generated')|list|length }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">PDFs Generated</div></div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg"><div class="text-2xl font-bold text-amber-600">{{ payslips|rejectattr('pdf_generated')|list|length }}</div><div class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider">Pending PDFs</div></div>
-</div>
-<!-- Filters -->
-<div class="card-modern mb-6">
-  <div class="card-modern-header"><h5><i class="fas fa-filter text-blue-800"></i> Filters</h5></div>
-  <div class="card-modern-body">
-    <div class="flex flex-wrap gap-3">
-      <select id="monthFilter" onchange="applyFilters()" class="px-4 py-2 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-blue-900/30 focus:border-blue-800 outline-none bg-white">
-        <option value="">All Months</option>
-        {% set months_list = payslips|map(attribute='month')|unique|sort(reverse=True)|list %}
-        {% for m in months_list %}
-        <option value="{{ m }}">{{ m }}</option>
-        {% endfor %}
-      </select>
-      <select id="pdfFilter" onchange="applyFilters()" class="px-4 py-2 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-blue-900/30 focus:border-blue-800 outline-none bg-white">
-        <option value="">PDF Status</option>
-        <option value="ready">PDF Ready</option>
-        <option value="pending">PDF Pending</option>
-      </select>
-      <input id="searchQuery" type="text" placeholder="Search employee..." oninput="applyFilters()" class="px-4 py-2 rounded-xl border border-gray-300 text-sm focus:ring-2 focus:ring-blue-900/30 focus:border-blue-800 outline-none bg-white w-48" />
-      <button onclick="generateAllPDFs()" class="px-5 py-2 rounded-xl font-semibold text-sm text-white shadow-lg transition-all hover:shadow-xl hover:brightness-110" style="background:linear-gradient(135deg,#059669,#10b981)"><i class="fas fa-file-pdf mr-2"></i> Generate All PDFs</button>
-    </div>
-  </div>
-</div>
-<!-- Payslip Grid -->
-<div id="payslipContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-  {% for p in payslips %}
-  <div class="payslip-card rounded-xl bg-white border border-gray-200/60 shadow-sm overflow-hidden payslip-item" data-month="{{ p.month or '' }}" data-pdf="{{ 'ready' if p.pdf_generated else 'pending' }}" data-name="{{ (p.employee.name if p.employee else p.employee_name or '')|lower }}">
-    <div class="px-5 py-4 flex items-center justify-between" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)">
-      <div class="text-white min-w-0">
-        <h6 class="font-semibold text-sm truncate">{{ p.employee.name if p.employee else p.employee_name }}</h6>
-        <span class="text-xs text-white/70">{{ p.employee.employee_number if p.employee else '' }}</span>
-      </div>
-      <span class="px-2.5 py-1 rounded-full text-xs font-medium bg-white/15 text-white border border-white/20 whitespace-nowrap ml-2">{{ p.month }}</span>
-    </div>
-    <div class="px-5 py-4 space-y-2">
-      <div class="flex justify-between text-sm"><span class="text-gray-500">Basic Salary</span><span class="font-medium">GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</span></div>
-      <div class="flex justify-between text-sm"><span class="text-gray-500">Total Earnings</span><span class="font-medium">GHS {{ "{:,.2f}".format(p.total_earnings or 0) }}</span></div>
-      <div class="flex justify-between text-sm"><span class="text-gray-500">Total Deductions</span><span class="font-medium text-red-600">- GHS {{ "{:,.2f}".format(p.total_deductions or 0) }}</span></div>
-      <div class="flex justify-between text-sm border-t border-gray-100 pt-2"><span class="font-semibold text-gray-700">Net Salary</span><span class="font-bold text-emerald-600">GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</span></div>
-      <div class="flex justify-between text-sm"><span class="text-gray-500">Employer Contribution</span><span class="text-gray-600">GHS {{ "{:,.2f}".format(p.employer_contribution or 0) }}</span></div>
-      <div class="mt-2">
-        {% if p.pdf_generated %}
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"><i class="fas fa-check-circle"></i> PDF Ready</span>
-        {% else %}
-        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700"><i class="fas fa-clock"></i> PDF Pending</span>
-        {% endif %}
+{% if error %}
+<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
+{% endif %}
+
+<div class="table-container">
+  <div class="table-toolbar">
+    <div class="table-toolbar-left">
+      <div class="table-search">
+        <i class="fas fa-search" style="color: var(--text-muted);"></i>
+        <input type="text" id="payslipSearch" placeholder="Search payslips..." />
       </div>
     </div>
-    <div class="px-5 py-3 bg-gray-50/80 flex gap-2">
-      <button onclick="previewPayslip({{ p.id }})" class="flex-1 px-3 py-2 text-xs font-medium rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 transition"><i class="fas fa-eye mr-1"></i> Preview</button>
-      {% if p.pdf_generated %}
-      <a href="/payslips/{{ p.id }}/download" class="flex-1 px-3 py-2 text-xs font-medium rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 transition text-center"><i class="fas fa-download mr-1"></i> Download</a>
-      {% else %}
-      <button onclick="generateSinglePDF({{ p.id }})" class="flex-1 px-3 py-2 text-xs font-medium rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition"><i class="fas fa-file-pdf mr-1"></i> Generate</button>
-      {% endif %}
+    <div class="table-toolbar-right">
+      <span class="badge badge-info" style="font-size: 13px;">{{ payslips|length }} Payslips</span>
     </div>
   </div>
-  {% else %}
-  <div class="col-span-full text-center py-16">
-    <i class="fas fa-file-invoice text-5xl text-gray-400/50"></i>
-    <h5 class="mt-4 text-lg font-semibold text-gray-400">No Payslips Found</h5>
-    <p class="text-gray-500 text-sm mt-1">Upload payroll data to generate payslips.</p>
-    <a href="/upload" class="inline-block mt-4 px-6 py-2.5 rounded-xl font-semibold text-white shadow-lg transition-all hover:shadow-xl" style="background:linear-gradient(135deg,#1a365d,#2a4a7f)"><i class="fas fa-upload mr-2"></i> Upload Payroll</a>
+  <table class="table" id="payslipTable">
+    <thead>
+      <tr>
+        <th>Employee</th>
+        <th>Employee #</th>
+        <th>Month</th>
+        <th>Basic Salary</th>
+        <th>Net Salary</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in payslips %}
+      <tr data-month="{{ p.month }}">
+        <td><strong>{{ p.employee.name if p.employee else p.employee_name }}</strong></td>
+        <td><span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span></td>
+        <td><span class="badge badge-info">{{ p.month }}</span></td>
+        <td>GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</td>
+        <td><strong>GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
+        <td>
+          {% if p.pdf_generated %}
+          <span class="badge badge-success">PDF Ready</span>
+          {% else %}
+          <span class="badge badge-warning">Pending</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="btn-group" style="display: flex; gap: 4px;">
+            <button class="btn btn-sm btn-ghost preview-btn" data-id="{{ p.id }}" title="Preview"><i class="fas fa-eye"></i></button>
+            <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download"><i class="fas fa-download"></i></a>
+            <button class="btn btn-sm btn-ghost email-btn" data-id="{{ p.id }}" title="Send Email" style="color: var(--accent);"><i class="fas fa-envelope"></i></button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not payslips %}
+  <div class="empty-state">
+    <div class="empty-state-icon" style="font-size: 36px;">📄</div>
+    <h4>No Payslips Found</h4>
+    <p>Upload payroll data to generate payslips.</p>
+    <a href="/upload" class="btn btn-primary">Upload Now</a>
   </div>
-  {% endfor %}
+  {% endif %}
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Payslip Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="previewContent">
+        <div class="loading-spinner"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <a href="#" class="btn btn-primary" id="downloadBtn">Download PDF</a>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-(function(){
-  'use strict';
-  // Only re-apply filters + event bindings if payslip items exist
-  var container = document.getElementById('payslipContainer');
-  if (!container) return;
+document.addEventListener('DOMContentLoaded', function() {
+  // Search functionality
+  var searchInput = document.getElementById('payslipSearch');
+  var monthSelect = document.getElementById('monthSelectPayslip');
+  var table = document.getElementById('payslipTable');
 
-  var payslips = document.querySelectorAll('.payslip-item');
-
-  window.applyFilters = function(){
-    var month = (document.getElementById('monthFilter')?.value || '').toLowerCase();
-    var pdf = document.getElementById('pdfFilter')?.value || '';
-    var query = (document.getElementById('searchQuery')?.value || '').toLowerCase();
-    payslips.forEach(function(el){
-      var m = (el.dataset.month || '').toLowerCase();
-      var p = el.dataset.pdf || '';
-      var n = (el.dataset.name || '');
-      var monthMatch = !month || m === month;
-      var pdfMatch = !pdf || p === pdf;
-      var nameMatch = !query || n.includes(query);
-      el.style.display = (monthMatch && pdfMatch && nameMatch) ? '' : 'none';
+  function filterTable() {
+    var search = (searchInput.value || '').toLowerCase();
+    var month = monthSelect ? monthSelect.value : '';
+    var rows = table.querySelectorAll('tbody tr');
+    rows.forEach(function(row) {
+      var text = row.textContent.toLowerCase();
+      var rowMonth = row.getAttribute('data-month') || '';
+      row.style.display = text.includes(search) && (!month || rowMonth === month) ? '' : 'none';
     });
-  };
+  }
 
-  window.previewPayslip = function(id){
-    var modal = document.getElementById('previewModal');
-    var content = document.getElementById('previewContent');
-    var downloadBtn = document.getElementById('downloadBtn');
-    if (!modal || !content || !downloadBtn) return;
-    modal.classList.remove('hidden');
-    content.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-3xl text-blue-800"></i><p class="mt-3 text-gray-500">Loading payslip data...</p></div>';
-    downloadBtn.classList.add('hidden');
-    fetch('/payslips/' + id + '/data')
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        downloadBtn.href = '/payslips/' + id + '/download';
-        downloadBtn.classList.remove('hidden');
-        content.innerHTML = buildPreviewHTML(d);
-      })
-      .catch(function(e){
-        content.innerHTML = '<div class="text-center py-8 text-red-500"><i class="fas fa-exclamation-circle text-3xl"></i><p class="mt-3">Failed to load payslip: ' + e.message + '</p></div>';
-      });
-  };
+  if (searchInput) searchInput.addEventListener('keyup', filterTable);
+  if (monthSelect) monthSelect.addEventListener('change', filterTable);
 
-  window.buildPreviewHTML = function(d){
-    return '<div class="border border-gray-200 rounded-xl overflow-hidden">' +
-      '<div class="px-6 py-5 text-center border-b border-gray-200" style="background:#f8fafc">' +
-        '<h4 class="font-bold text-lg" style="color:#1a1a2e">DEEPER CHRISTIAN LIFE MINISTRY</h4>' +
-        '<p class="text-xs text-gray-500">P.O. BOX AN 16866, ACCRA-GHANA</p>' +
-        '<div class="mt-3"><h5 class="font-bold" style="color:#0f3460">' + d.employee_name + '</h5></div>' +
-        '<div class="text-xs text-gray-400">' + (d.bank_name && d.bank_name !== 'N/A' ? 'Bank: ' + d.bank_name + ' ' + (d.bank_branch||'') + ' | Acc: ' + (d.bank_number||'N/A') : '') + '</div>' +
-        '<div class="mt-2"><span class="font-bold text-lg" style="color:#0f3460">PAY SLIP</span></div>' +
-        '<div class="text-sm font-semibold text-gray-600">for ' + d.month + '</div>' +
-      '</div>' +
-      '<div class="px-6 py-4 bg-gray-50 border-b border-gray-200">' +
-        '<div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">' +
-          '<div><span class="text-gray-500">Bank Name:</span> <span class="font-medium">' + (d.bank_name || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Employee No.:</span> <span class="font-medium">' + (d.employee_number || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Function:</span> <span class="font-medium">' + (d.function || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Designation:</span> <span class="font-medium">' + (d.designation || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Location:</span> <span class="font-medium">' + (d.location || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Date Joined:</span> <span class="font-medium">' + (d.date_joined || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">SSNIT No.:</span> <span class="font-medium">' + (d.ssnit_number || 'N/A') + '</span></div>' +
-          '<div><span class="text-gray-500">Account No.:</span> <span class="font-medium">' + (d.bank_number || 'N/A') + '</span></div>' +
-        '</div>' +
-      '</div>' +
-      '<table class="w-full text-sm">' +
-        '<thead><tr style="background:#0f3460;color:#fff"><th class="text-left px-4 py-3 font-medium">DESCRIPTION</th><th class="text-right px-4 py-3 font-medium">EARNINGS (GHS)</th><th class="text-right px-4 py-3 font-medium">DEDUCTIONS (GHS)</th></tr></thead>' +
-        '<tbody>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Basic Salary</td><td class="px-4 py-2.5 text-right">' + d.basic_salary.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Meals Monthly</td><td class="px-4 py-2.5 text-right">' + d.meals_monthly.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Responsibility Allowance</td><td class="px-4 py-2.5 text-right">' + d.responsibility_allowance.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">COLA</td><td class="px-4 py-2.5 text-right">' + d.cola.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Leave Allowance</td><td class="px-4 py-2.5 text-right">' + d.leave_allowance.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100"><td class="px-4 py-2.5">Other Earnings</td><td class="px-4 py-2.5 text-right">' + d.other_earnings.toFixed(2) + '</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td></tr>' +
-          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">PAYE Tax</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.paye.toFixed(2) + '</td></tr>' +
-          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">10% Tithe</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.tithe.toFixed(2) + '</td></tr>' +
-          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Future Savings</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.future_savings.toFixed(2) + '</td></tr>' +
-          '<tr class="border-b border-gray-100 bg-gray-50"><td class="px-4 py-2.5">Other Deductions</td><td class="px-4 py-2.5 text-right text-gray-400">&mdash;</td><td class="px-4 py-2.5 text-right">' + d.other_deductions.toFixed(2) + '</td></tr>' +
-          '<tr style="background:#f3f4f6"><td class="px-4 py-3 font-bold">TOTAL</td><td class="px-4 py-3 text-right font-bold">' + d.total_earnings.toFixed(2) + '</td><td class="px-4 py-3 text-right font-bold">' + d.total_deductions.toFixed(2) + '</td></tr>' +
-        '</tbody>' +
-      '</table>' +
-      '<div class="px-6 py-5" style="background:#ecfdf5">' +
-        '<div class="flex justify-between items-center"><span class="font-bold text-emerald-800">NET SALARY</span><span class="text-2xl font-bold text-emerald-600">GHS ' + d.net_salary.toFixed(2) + '</span></div>' +
-      '</div>' +
-      (d.employer_contribution > 0 ? '<div class="px-6 py-2 text-xs text-gray-400 text-center border-t border-gray-100">Employer Contribution: GHS ' + d.employer_contribution.toFixed(2) + '</div>' : '') +
-      '<div class="px-6 py-3 text-xs text-gray-400 text-center border-t border-gray-100">This is a computer-generated document and does not require a signature.</div>' +
-    '</div>';
-  };
+  // Preview buttons
+  document.querySelectorAll('.preview-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var id = this.getAttribute('data-id');
+      fetch('/payslips/' + id + '/data')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var html = '<div class="table-container"><table class="table">';
+          html += '<tr><th>Employee</th><td>' + (data.employee_name || '') + '</td></tr>';
+          html += '<tr><th>Employee #</th><td>' + (data.employee_number || '') + '</td></tr>';
+          html += '<tr><th>Month</th><td>' + (data.month || '') + '</td></tr>';
+          html += '<tr><th>Basic Salary</th><td>GHS ' + (data.basic_salary || 0).toLocaleString() + '</td></tr>';
+          html += '<tr><th>Net Salary</th><td><strong>GHS ' + (data.net_salary || 0).toLocaleString() + '</strong></td></tr>';
+          html += '<tr><th>PAYE Tax</th><td>GHS ' + (data.paye || 0).toLocaleString() + '</td></tr>';
+          html += '<tr><th>Tithe</th><td>GHS ' + (data.tithe || 0).toLocaleString() + '</td></tr>';
+          html += '<tr><th>Total Deductions</th><td>GHS ' + (data.total_deductions || 0).toLocaleString() + '</td></tr>';
+          html += '</table></div>';
+          document.getElementById('previewContent').innerHTML = html;
+          document.getElementById('downloadBtn').href = '/payslips/' + id + '/download';
+          new bootstrap.Modal(document.getElementById('previewModal')).show();
+        });
+    });
+  });
 
-  window.closePreview = function(){
-    var modal = document.getElementById('previewModal');
-    if (modal) modal.classList.add('hidden');
-  };
+  // Email buttons
+  document.querySelectorAll('.email-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var id = this.getAttribute('data-id');
+      if (confirm('Send this payslip via email?')) {
+        window.location.href = '/payslips/' + id + '/send-email';
+      }
+    });
+  });
 
-  window.generateSinglePDF = function(id){
-    fetch('/payslips/generate-single/' + id, { method: 'POST' })
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if (d.success) {
-          // Use SPA re-fetch instead of full reload
-          if (window.__SPA_NAV_INITIALIZED) {
-            window.location.href = window.location.pathname + '?t=' + Date.now();
+  // Generate all button
+  var genBtn = document.getElementById('generateAllBtn');
+  if (genBtn) {
+    genBtn.addEventListener('click', function() {
+      var month = monthSelect ? monthSelect.value : '__ALL__';
+      if (confirm('Generate PDFs for ' + (month || 'all months') + '?')) {
+        var btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        fetch('/payslips/generate-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'month=' + encodeURIComponent(month || '__ALL__')
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate All PDFs';
+          if (data.success) {
+            location.reload();
           } else {
-            window.location.href = window.location.pathname + '?t=' + Date.now();
+            alert(data.message);
           }
-        } else {
-          alert('Failed: ' + (d.message || 'Unknown error'));
-        }
-      })
-      .catch(function(e){ alert('Error: ' + e.message); });
-  };
-
-  window.generateAllPDFs = function(){
-    if (!confirm('Generate PDFs for all payslips?')) return;
-    var btn = document.querySelector('button[onclick*="generateAllPDFs"]');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Generating...';
-    }
-    fetch('/payslips/generate-all', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'month=__ALL__'
-    }).then(function(r){ return r.json(); }).then(function(d){
-      alert(d.message || 'Done');
-      if (window.__SPA_NAV_INITIALIZED) {
-        window.location.href = window.location.pathname + '?t=' + Date.now();
-      } else {
-        window.location.href = window.location.pathname + '?t=' + Date.now();
-      }
-    }).catch(function(e){
-      alert('Error: ' + e.message);
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-file-pdf mr-2"></i> Generate All PDFs';
+        });
       }
     });
-  };
-})();
+  }
+});
 </script>
-<script src="/static/js/menu-tabs.js"></script>
-<script src="/static/js/toast-notifications.js"></script>
-<script src="/static/js/progress-system.js"></script>
-<script src="/static/js/spa-navigation.js"></script>
 {% endblock %}

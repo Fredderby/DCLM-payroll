@@ -1,95 +1,184 @@
 {% extends "base.html" %}
 
-{% block title %}Loan Management - DCLM Payroll Management System{% endblock %}
+{% block title %}Loan Management - DCLM Payroll{% endblock %}
+
+{% block page_title %}Loan Management{% endblock %}
+{% block page_subtitle %}Register and manage employee loan requests{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-  <h2 class="text-2xl font-bold text-white flex items-center gap-3">
-    <i class="fas fa-hand-holding-usd text-blue-300"></i> Loan
-    Management
-  </h2>
-  <p class="text-blue-200/70 text-sm mt-1">
-    Record employee loan requests and track repayment details
-  </p>
-</div>
-{% if success %}
-<div
-  class="mb-5 p-4 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 flex items-center gap-3 shadow-lg"
->
-  <i class="fas fa-check-circle text-emerald-400"></i> {{ success }}
-  <button
-    onclick="this.parentElement.remove()"
-    class="ml-auto text-emerald-300/70 hover:text-emerald-200"
-  >
-    <i class="fas fa-times"></i>
-  </button>
-</div>
-{% endif %} {% if error %}
-<div
-  class="mb-5 p-4 rounded-xl bg-red-500/15 border border-red-400/30 text-red-200 flex items-center gap-3 shadow-lg"
->
-  <i class="fas fa-exclamation-circle text-red-400"></i> {{ error }}
-  <button
-    onclick="this.parentElement.remove()"
-    class="ml-auto text-red-300/70 hover:text-red-200"
-  >
-    <i class="fas fa-times"></i>
-  </button>
-</div>
+{% if error %}
+<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
 {% endif %}
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="text-2xl font-bold" style="color: #0f3460">
-      {{ stats.active_count }}
-    </div>
-    <div
-      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-    >
-      Active Loans
+{% if success %}
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
+{% endif %}
+
+<div class="row g-4">
+  <!-- LEFT COLUMN: Registration Form -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <h5><i class="fas fa-hand-holding-usd me-2"></i>Register New Loan</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="/loans/add" onsubmit="return validateLoanForm()">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label" style="font-size:12px;">Employee Name <span class="text-danger">*</span></label>
+              <input type="text" name="employee_name" id="l_empname" class="form-control form-control-sm" list="loanEmpList" required placeholder="John Doe" autocomplete="off" />
+              <datalist id="loanEmpList">
+                {% for e in employees_list %}<option value="{{ e.name }}">{% endfor %}
+              </datalist>
+            </div>
+            <div class="col-6">
+              <label class="form-label" style="font-size:12px;">Bank Name</label>
+              <input type="text" name="bank_name" class="form-control form-control-sm" placeholder="GCB Bank" />
+            </div>
+            <div class="col-4">
+              <label class="form-label" style="font-size:12px;">Loan Amount (GHS) <span class="text-danger">*</span></label>
+              <input type="number" step="0.01" name="loan_amount" id="l_amount" class="form-control form-control-sm" required placeholder="1000.00" />
+            </div>
+            <div class="col-4">
+              <label class="form-label" style="font-size:12px;">Interest (GHS)</label>
+              <input type="number" step="0.01" name="interest_amount" id="l_interest" class="form-control form-control-sm" value="0" placeholder="0.00" />
+            </div>
+            <div class="col-4">
+              <label class="form-label" style="font-size:12px;">Months to Pay <span class="text-danger">*</span></label>
+              <input type="number" min="1" name="months_to_pay" id="l_months" class="form-control form-control-sm" required placeholder="12" />
+            </div>
+            <div class="col-12">
+              <label class="form-label" style="font-size:12px;">Notes</label>
+              <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Optional notes..."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100 mt-3"><i class="fas fa-save me-1"></i> Register Loan</button>
+        </form>
+      </div>
     </div>
   </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="text-2xl font-bold" style="color: #0f3460">
-      GHS {{ "{:,.2f}".format(stats.total_outstanding) }}
+
+  <!-- RIGHT COLUMN: Summary Cards + Table -->
+  <div class="col-lg-7">
+    <!-- Summary Cards -->
+    <div class="row g-2 mb-3">
+      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5">{{ stats.total_loaned or 0 }}</div><small class="text-muted" style="font-size:11px;">Total Loaned</small></div></div>
+      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5">{{ stats.active_count or 0 }}</div><small class="text-muted" style="font-size:11px;">Active</small></div></div>
+      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5 text-success">{{ stats.completed_count or 0 }}</div><small class="text-muted" style="font-size:11px;">Completed</small></div></div>
+      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5 text-danger">GHS {{ "{:,.0f}".format(stats.total_outstanding or 0) }}</div><small class="text-muted" style="font-size:11px;">Outstanding</small></div></div>
     </div>
-    <div
-      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-    >
-      Total Outstanding
+
+    <!-- Loans Table -->
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="fas fa-list me-1"></i> Loan Records</h6>
+        <span class="badge bg-info">{{ loans|length }} Loans</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0" id="loanTable">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Amount</th>
+              <th>Balance</th>
+              <th>Monthly</th>
+              <th>Status</th>
+              <th style="width:100px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for loan in loans %}
+            <tr>
+              <td><strong>{{ loan.employee_name }}</strong>{% if loan.bank_name %}<br /><small class="text-muted">{{ loan.bank_name }}</small>{% endif %}</td>
+              <td>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</td>
+              <td><strong style="color:{% if loan.balance > 0 %}var(--danger){% else %}var(--success){% endif %};">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</strong></td>
+              <td>GHS {{ "{:,.2f}".format(loan.monthly_deduction or 0) }}<br /><small class="text-muted">{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }}mo</small></td>
+              <td>
+                {% if loan.status == "Active" %}<span class="badge bg-warning text-dark">Active</span>
+                {% elif loan.status == "Completed" %}<span class="badge bg-success">Completed</span>
+                {% else %}<span class="badge bg-secondary">{{ loan.status }}</span>{% endif %}
+              </td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  {% if loan.status == "Active" %}
+                  <form method="POST" action="/loans/{{ loan.id }}/pay" style="display:inline;">
+                    <button class="btn btn-outline-success" title="Record Payment"><i class="fas fa-check"></i></button>
+                  </form>
+                  {% endif %}
+                  <form method="POST" action="/loans/{{ loan.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this loan record?')">
+                    <button class="btn btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if not loans %}
+        <div class="text-center py-4 text-muted">
+          <i class="fas fa-hand-holding-usd fa-2x mb-2"></i><br />No loans recorded yet. Use the form on the left to register a loan.
+        </div>
+        {% endif %}
+      </div>
     </div>
-  </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="text-2xl font-bold" style="color: #0f3460">
-      GHS {{ "{:,.2f}".format(stats.total_loaned) }}
+
+    <!-- Loan Profile Cards -->
+    {% if loans %}
+    <div class="mt-3">
+      <h6 class="mb-2"><i class="fas fa-id-card me-1"></i> Loan Overview</h6>
+      <div class="row g-2">
+        {% for loan in loans %}
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-body p-3">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <div class="fw-bold">{{ loan.employee_name }}</div>
+                  {% if loan.bank_name %}<small class="text-muted">{{ loan.bank_name }}</small>{% endif %}
+                </div>
+                {% if loan.status == "Active" %}<span class="badge bg-warning text-dark">Active</span>
+                {% elif loan.status == "Completed" %}<span class="badge bg-success">Completed</span>
+                {% else %}<span class="badge bg-secondary">{{ loan.status }}</span>{% endif %}
+              </div>
+              <div class="d-flex justify-content-between" style="font-size:13px;">
+                <span class="text-muted">Amount:</span>
+                <strong>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="font-size:13px;">
+                <span class="text-muted">Due:</span>
+                <strong>GHS {{ "{:,.2f}".format(loan.total_receivable or 0) }}</strong>
+              </div>
+              <div class="d-flex justify-content-between" style="font-size:13px;">
+                <span class="text-muted">Balance:</span>
+                <strong style="color:{% if loan.balance > 0 %}var(--danger){% else %}var(--success){% endif %};">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</strong>
+              </div>
+              <div class="mt-2">
+                <div class="progress" style="height:6px;">
+                  {% set pct = (loan.amount_paid / loan.total_receivable * 100) if loan.total_receivable > 0 else 0 %}
+                  <div class="progress-bar bg-{{ 'success' if pct >= 100 else 'primary' }}" style="width:{{ pct|round }}%;"></div>
+                </div>
+                <small class="text-muted">{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }} months paid</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
     </div>
-    <div
-      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-    >
-      Total Loaned
-    </div>
-  </div>
-  <div class="rounded-2xl p-5 glass border border-white/20 shadow-lg">
-    <div class="text-2xl font-bold" style="color: #0f3460">
-      {{ stats.completed_count }}
-    </div>
-    <div
-      class="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wider"
-    >
-      Completed
-    </div>
+    {% endif %}
   </div>
 </div>
-<!-- React mount for interactive loan management -->
-<div id="loan-app-mount"></div>
 {% endblock %}
 
 {% block extra_scripts %}
-<!-- Pass server data to React via JSON script elements -->
-<script id="data-loan-employees" type="application/json">{{ employees_json|safe }}</script>
-<script id="data-loan-loans" type="application/json">{{ loans_json|safe }}</script>
-<script type="text/babel" src="/static/js/loans-page.jsx"></script>
-<script src="/static/js/menu-tabs.js"></script>
-<script src="/static/js/toast-notifications.js"></script>
-<script src="/static/js/progress-system.js"></script>
-<script src="/static/js/spa-navigation.js"></script>
+<script>
+function validateLoanForm(){
+  var name = document.getElementById('l_empname');
+  var amt = document.getElementById('l_amount');
+  var months = document.getElementById('l_months');
+  if(!name.value.trim()){ alert('Employee name is required.'); name.focus(); return false; }
+  if(!amt.value || parseFloat(amt.value) <= 0){ alert('Loan amount must be greater than 0.'); amt.focus(); return false; }
+  if(!months.value || parseInt(months.value) < 1){ alert('Months to pay must be at least 1.'); months.focus(); return false; }
+  return true;
+}
+</script>
 {% endblock %}

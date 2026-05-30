@@ -1,18 +1,138 @@
-<!-- React Navigation Sidebar - Mount Point -->
-<div id="navigation-mount"></div>
+<!--
+  DCLM Payroll - Sidebar Navigation
+  Pure HTML/CSS implementation - no React dependency
+-->
+<aside class="sidebar" id="sidebar">
+  <!-- Brand -->
+  <div class="sidebar-brand">
+    <img src="/static/logo.jpg" alt="DCLM Logo" class="brand-icon" style="width: 36px; height: 36px; object-fit: contain; border-radius: var(--radius);" />
+    <span class="brand-text">DCLM Payroll</span>
+  </div>
 
-<!-- User data passed from server to React -->
-<script id="nav-user-data" type="application/json">{
-  "first_name": "{{ user.first_name|e }}",
-  "last_name": "{{ user.last_name|e }}",
-  "role": "{{ user.role|e }}"
-}
+  <!-- Navigation -->
+  <nav class="sidebar-nav">
+    <div class="nav-section-title">Main Menu</div>
+
+    <a href="/dashboard" data-nav-link class="nav-item active" data-icon="home">
+      <span class="nav-icon"><i class="fas fa-home"></i></span>
+      <span class="nav-label">Dashboard</span>
+    </a>
+
+    <a href="/staff" data-nav-link class="nav-item" data-icon="users">
+      <span class="nav-icon"><i class="fas fa-users"></i></span>
+      <span class="nav-label">Employees</span>
+    </a>
+
+    <a href="/upload" data-nav-link class="nav-item" data-icon="upload">
+      <span class="nav-icon"><i class="fas fa-upload"></i></span>
+      <span class="nav-label">Upload Payroll</span>
+    </a>
+
+    <a href="/payslips" data-nav-link class="nav-item" data-icon="file-invoice">
+      <span class="nav-icon"><i class="fas fa-file-invoice"></i></span>
+      <span class="nav-label">Payslips</span>
+    </a>
+
+    <a href="/loans" data-nav-link class="nav-item" data-icon="hand-holding-usd">
+      <span class="nav-icon"><i class="fas fa-hand-holding-usd"></i></span>
+      <span class="nav-label">Loans</span>
+    </a>
+
+    <a href="/reports" data-nav-link class="nav-item" data-icon="chart-bar">
+      <span class="nav-icon"><i class="fas fa-chart-bar"></i></span>
+      <span class="nav-label">Reports</span>
+    </a>
+
+    <div class="nav-section-title">System</div>
+
+    <a href="/reports/history" data-nav-link class="nav-item" data-icon="history">
+      <span class="nav-icon"><i class="fas fa-history"></i></span>
+      <span class="nav-label">Upload History</span>
+    </a>
+
+    <a href="/settings/email" data-nav-link class="nav-item" data-icon="envelope">
+      <span class="nav-icon"><i class="fas fa-envelope"></i></span>
+      <span class="nav-label">Email Settings</span>
+    </a>
+
+    <a href="/payslips/send" data-nav-link class="nav-item" data-icon="paper-plane">
+      <span class="nav-icon"><i class="fas fa-paper-plane"></i></span>
+      <span class="nav-label">Send Payslips</span>
+    </a>
+  </nav>
+
+  <!-- Footer with user info and logout -->
+  <div class="sidebar-footer">
+    {% if user %}
+    <div class="sidebar-user" style="padding: 8px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px;">
+      <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ user.first_name[:1]|upper if user.first_name else 'U' }}{{ user.last_name[:1]|upper if user.last_name else 'U' }}</div>
+      <div class="sidebar-user-info">
+        <div class="sidebar-user-name" style="font-size: 13px;">{{ user.first_name or 'User' }} {{ user.last_name or '' }}</div>
+        <div class="sidebar-user-role" style="font-size: 10px;">{{ user.role or 'Staff' }}</div>
+      </div>
+    </div>
+    {% endif %}
+    <a href="/logout" class="nav-item logout-item" id="logout-btn">
+      <span class="nav-icon"><i class="fas fa-sign-out-alt"></i></span>
+      <span class="nav-label">Logout</span>
+    </a>
+  </div>
+
+  <!-- Toggle button -->
+  <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">
+    <i class="fas fa-chevron-left"></i>
+  </button>
+</aside>
+
+<!-- Mobile overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<script>
+  // Sidebar toggle
+  (function() {
+    var sidebar = document.getElementById('sidebar');
+    var toggle = document.getElementById('sidebarToggle');
+    var overlay = document.getElementById('sidebarOverlay');
+    var mainContent = document.querySelector('.main-content');
+
+    if (toggle) {
+      toggle.addEventListener('click', function() {
+        sidebar.classList.toggle('collapsed');
+        if (mainContent) mainContent.classList.toggle('expanded');
+        var icon = toggle.querySelector('i');
+        if (icon) {
+          icon.className = sidebar.classList.contains('collapsed')
+            ? 'fas fa-chevron-right'
+            : 'fas fa-chevron-left';
+        }
+      });
+    }
+
+    // Mobile menu toggle
+    var mobileBtns = document.querySelectorAll('.mobile-menu-btn');
+    mobileBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        sidebar.classList.toggle('mobile-open');
+        if (overlay) overlay.classList.toggle('open');
+      });
+    });
+
+    if (overlay) {
+      overlay.addEventListener('click', function() {
+        sidebar.classList.remove('mobile-open');
+        overlay.classList.remove('open');
+      });
+    }
+
+    // Active nav link highlighting
+    var currentPath = window.location.pathname;
+    var navLinks = document.querySelectorAll('[data-nav-link]');
+    navLinks.forEach(function(link) {
+      if (link.getAttribute('href') === currentPath) {
+        link.classList.add('active');
+      } else {
+        link.classList.remove('active');
+      }
+    });
+  })();
 </script>
-
-<!-- React + Babel -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-<!-- Navigation Component -->
-<script type="text/babel" src="/static/js/navigation.jsx"></script>

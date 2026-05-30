@@ -117,6 +117,5 @@ document.getElementById("register-password").addEventListener("input",function()
 document.getElementById("confirm-password").addEventListener("input",function(){var p=document.getElementById("register-password").value;this.setCustomValidity(p!==this.value?"Passwords do not match":"");});
 {% if register_success %}<script nonce>switchTab("login");</script>{% endif %}
 </script>
-    <script src="/static/js/spa-navigation.js"></script>
 </body>
 </html>

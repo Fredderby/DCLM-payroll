@@ -1,66 +1,164 @@
 {% extends "base.html" %}
 
-{% block title %}Email Settings - DCLM Payroll Management System{% endblock %}
+{% block title %}Email Settings - DCLM Payroll{% endblock %}
+
+{% block page_title %}Email Settings{% endblock %}
+{% block page_subtitle %}Configure SMTP email server settings{% endblock %}
 
 {% block content %}
-<div class="page-header"><h2><i class="fas fa-cog me-2" style="color:#0f3460;"></i>Email Settings</h2><p>Configure SMTP settings for sending payslip emails</p></div>
-{% if message %}<div class="alert alert-success alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-check-circle me-2"></i> {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-{% if error %}<div class="alert alert-danger alert-dismissible fade show border-0 rounded-3 shadow-sm"><i class="fas fa-exclamation-circle me-2"></i> {{ error }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
-<div class="card-modern">
-  <div class="card-modern-header"><h5><i class="fas fa-server"></i> SMTP Configuration</h5><span class="badge {% if smtp_configured %}bg-success{% else %}bg-warning text-dark{% endif %} rounded-pill">{% if smtp_configured %}Connected{% else %}Disconnected{% endif %}</span></div>
-  <div class="card-modern-body">
-    <p class="text-muted small mb-3">These settings are loaded from environment variables. Update your .env file to change them.</p>
-    <form method="POST" action="/settings/email">
-      <div class="row g-3 mb-3">
-        <div class="col-md-6"><div class="form-floating"><input type="text" class="form-control" id="smtp_server" name="smtp_server" value="{{ smtp_server }}" placeholder="smtp.gmail.com"><label><i class="fas fa-server me-1" style="color:#0f3460;"></i> SMTP Server</label></div></div>
-        <div class="col-md-3"><div class="form-floating"><input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ smtp_port }}" placeholder="587"><label><i class="fas fa-plug me-1" style="color:#0f3460;"></i> Port</label></div></div>
-        <div class="col-md-3"><div class="form-floating"><select class="form-select" id="smtp_security" name="smtp_security"><option value="tls">TLS</option><option value="ssl">SSL</option><option value="none">None</option></select><label><i class="fas fa-shield-alt me-1" style="color:#0f3460;"></i> Security</label></div></div>
+{% if message %}
+<div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> {{ error }}</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <h4><i class="fas fa-cog"></i> SMTP Configuration</h4>
       </div>
-      <div class="row g-3 mb-3">
-        <div class="col-md-6"><div class="form-floating"><input type="email" class="form-control" id="smtp_username" name="smtp_username" value="{{ smtp_username }}" placeholder="you@gmail.com"><label><i class="fas fa-user me-1" style="color:#0f3460;"></i> Username / Email</label></div></div>
-        <div class="col-md-6"><div class="form-floating"><input type="password" class="form-control" id="smtp_password" name="smtp_password" value="{{ smtp_password }}" placeholder="App password"><label><i class="fas fa-key me-1" style="color:#0f3460;"></i> Password</label></div></div>
+      <div class="card-body">
+        <form method="POST" action="/settings/email/save">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="form-group">
+                <label class="form-label">SMTP Server *</label>
+                <input type="text" name="smtp_server" class="form-control" value="{{ smtp_server }}" placeholder="smtp.gmail.com" required />
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label class="form-label">Port *</label>
+                <input type="number" name="smtp_port" class="form-control" value="{{ smtp_port or 587 }}" required />
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="form-group">
+                <label class="form-label">Security</label>
+                <select name="smtp_security" class="form-control">
+                  <option value="tls" {% if smtp_security == 'tls' %}selected{% endif %}>TLS (Port 587)</option>
+                  <option value="ssl" {% if smtp_security == 'ssl' %}selected{% endif %}>SSL (Port 465)</option>
+                  <option value="none" {% if smtp_security == 'none' %}selected{% endif %}>None</option>
+                </select>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label class="form-label">Username *</label>
+                <input type="text" name="smtp_username" class="form-control" value="{{ smtp_username }}" placeholder="your@email.com" required />
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="form-group">
+                <label class="form-label">Password *</label>
+                <div style="position: relative;">
+                  <input type="password" name="smtp_password" class="form-control" id="smtpPassword" value="{{ smtp_password }}" placeholder="App password" required />
+                  <button type="button" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--text-muted);" onclick="togglePassword()">
+                    <i class="fas fa-eye" id="toggleIcon"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 12px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Settings</button>
+            <button type="button" class="btn btn-secondary" onclick="testConnection()"><i class="fas fa-plug"></i> Test Connection</button>
+          </div>
+        </form>
       </div>
-      <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary py-2 flex-fill" style="border-radius:12px;font-weight:600;background:linear-gradient(135deg,#1a365d,#2a4a7f);border:none;"><i class="fas fa-save me-2"></i> Save Settings</button>
-        <button type="button" class="btn btn-outline-info py-2" style="border-radius:12px;font-weight:600;" onclick="testConnection()"><i class="fas fa-paper-plane me-2"></i> Test Connection</button>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">
+        <h4><i class="fas fa-check-circle"></i> Status</h4>
       </div>
-    </form>
+      <div class="card-body">
+        {% if smtp_configured %}
+        <div class="alert alert-success"><i class="fas fa-check-circle"></i> SMTP is configured</div>
+        {% else %}
+        <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> SMTP is not configured</div>
+        {% endif %}
+        <div style="font-size: 14px; color: var(--text-secondary);">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><span>Server:</span><strong>{{ smtp_server or 'Not set' }}</strong></div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><span>Port:</span><strong>{{ smtp_port or 'Not set' }}</strong></div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;"><span>Username:</span><strong>{{ smtp_username or 'Not set' }}</strong></div>
+          <div style="display: flex; justify-content: space-between;"><span>Password:</span><strong>{% if smtp_password %}********{% else %}Not set{% endif %}</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h4><i class="fas fa-info-circle"></i> Instructions</h4>
+      </div>
+      <div class="card-body" style="font-size: 13px; color: var(--text-secondary);">
+        <ul style="padding-left: 16px; display: flex; flex-direction: column; gap: 8px;">
+          <li>Use a Gmail App Password (not your regular password)</li>
+          <li>Enable 2FA on your Google account to use App Passwords</li>
+          <li>SMTP Server: <code>smtp.gmail.com</code></li>
+          <li>Port: <code>587</code> with TLS</li>
+          <li>Test your connection after saving</li>
+        </ul>
+      </div>
+    </div>
   </div>
 </div>
-<div class="card-modern">
-  <div class="card-modern-header"><h5><i class="fas fa-info-circle"></i> How to Get Gmail App Password</h5></div>
-  <div class="card-modern-body">
-    <ol style="font-size:0.85rem;color:#555;padding-left:1.2rem;margin:0;">
-      <li class="mb-1">Go to your <a href="https://myaccount.google.com/security" target="_blank">Google Account</a></li>
-      <li class="mb-1">Enable <strong>2-Step Verification</strong></li>
-      <li class="mb-1">Go to <strong>App Passwords</strong> (search in Google Account)</li>
-      <li class="mb-1">Select <strong>Mail</strong> and your device, then <strong>Generate</strong></li>
-      <li class="mb-1">Copy the 16-character password and paste it above</li>
-    </ol>
+
+<!-- Test Result Modal -->
+<div class="modal fade" id="testResultModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Connection Test Result</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="testResultBody">
+        <div class="loading-spinner"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-  async function testConnection() {
-    var btn = document.querySelector("[onclick*='testConnection']");
-    if (!btn) btn = document.querySelector("button.btn-outline-info");
-    if (!btn) return;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Testing...';
-    try {
-      var resp = await fetch("/settings/email/test", { method: "POST" });
-      var data = await resp.json();
-      if (resp.ok) { alert("Connection successful! SMTP server is responding."); }
-      else { alert("Test failed: " + (data.detail || data.message || "Unknown error")); }
-    } catch(e) { alert("Error: " + e.message); }
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-paper-plane me-2"></i> Test Connection';
+function togglePassword() {
+  var pwd = document.getElementById('smtpPassword');
+  var icon = document.getElementById('toggleIcon');
+  if (pwd.type === 'password') {
+    pwd.type = 'text';
+    icon.className = 'fas fa-eye-slash';
+  } else {
+    pwd.type = 'password';
+    icon.className = 'fas fa-eye';
   }
+}
+
+function testConnection() {
+  var body = document.getElementById('testResultBody');
+  body.innerHTML = '<div class="loading-spinner"></div><p style="text-align: center; color: var(--text-muted); margin-top: 12px;">Testing SMTP connection...</p>';
+  new bootstrap.Modal(document.getElementById('testResultModal')).show();
+
+  fetch('/settings/email/test', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        body.innerHTML = '<div class="alert alert-success"><i class="fas fa-check-circle"></i> ' + (data.message || 'Connection successful!') + '</div>';
+      } else {
+        body.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> ' + (data.message || 'Connection failed!') + '</div>';
+      }
+    })
+    .catch(function() {
+      body.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Connection test failed.</div>';
+    });
+}
 </script>
-<script src="/static/js/menu-tabs.js"></script>
-<script src="/static/js/toast-notifications.js"></script>
-<script src="/static/js/progress-system.js"></script>
-<script src="/static/js/spa-navigation.js"></script>
 {% endblock %}

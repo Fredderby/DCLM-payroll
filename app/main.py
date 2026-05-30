@@ -21,6 +21,16 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.cache = None
 
+import json
+
+def tojson_filter(value):
+    try:
+        if hasattr(value, '__table__'):
+            return json.dumps({c.name: getattr(value, c.name, None) for c in value.__table__.columns}, default=str)
+        return json.dumps(value, default=str)
+    except:
+        return json.dumps(str(value))
+
 # Custom Jinja filters
 def format_month(value):
     """Convert '2024-01' or '2024-01-31' to readable month name"""
@@ -39,6 +49,7 @@ def format_month(value):
         return value
 
 templates.env.filters['format_month'] = format_month
+templates.env.filters['tojson'] = tojson_filter
 
 # API routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
@@ -1294,6 +1305,36 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
 
 
 
+
+@app.get("/api/employees/{employee_id}/detail")
+async def employee_detail(request: Request, employee_id: int, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return {"error": "Not authenticated"}
+    
+    from app.models.employee import Employee
+    
+    emp = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not emp:
+        return {"error": "Employee not found"}
+    
+    return {
+        "id": emp.id,
+        "employee_number": emp.employee_number,
+        "name": emp.name,
+        "email": emp.email,
+        "function": emp.function,
+        "designation": emp.designation,
+        "location": emp.location,
+        "date_joined": emp.date_joined.isoformat() if emp.date_joined else None,
+        "ssnit_number": emp.ssnit_number,
+        "tax_relief": emp.tax_relief,
+        "employer_contribution": emp.employer_contribution or 0,
+        "bank_name": emp.bank_name,
+        "bank_number": emp.bank_number,
+        "bank_branch": emp.bank_branch
+    }
 
 @app.get("/logout")
 async def logout(request: Request):
