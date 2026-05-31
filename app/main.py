@@ -667,6 +667,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     
     from app.models.payroll import PayrollRecord
     from app.models.employee import Employee
+    from app.models.loan import Loan
     from app.services.pdf_service import generate_payslip_pdf
     
     payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
@@ -700,6 +701,28 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "ssnit_number": employee.ssnit_number if employee else "",
         }
 
+    # Fetch loans for this employee (matched by name)
+    loans_data = []
+    if employee and employee.name:
+        loan_records = db.query(Loan).filter(Loan.employee_name == employee.name).filter(Loan.status != "Completed").all()
+        for loan in loan_records:
+            months_remaining = max(0, (loan.months_to_pay or 1) - (loan.months_paid or 0))
+            loans_data.append({
+                "bank_name": loan.bank_name or "",
+                "loan_amount": float(loan.loan_amount or 0),
+                "amount_paid": float(loan.amount_paid or 0),
+                "months_remaining": months_remaining
+            })
+    
+    # Net salary in words
+    net_words = ""
+    if payroll.net_salary:
+        try:
+            from app.services.payroll_service import number_to_words
+            net_words = number_to_words(payroll.net_salary)
+        except Exception:
+            net_words = ""
+    
     return {
         "id": payroll.id,
         "month": payroll.month,
@@ -728,7 +751,9 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "total_deductions": float(payroll.total_deductions or 0),
         "net_salary": float(payroll.net_salary or 0),
         "employer_contribution": float(payroll.employer_contribution or 0),
-        "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False
+        "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
+        "loans": loans_data,
+        "net_salary_words": net_words
     }
 
 @app.get("/payslips/{payroll_id}/download")
