@@ -26,59 +26,114 @@
 <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
 {% endif %}
 
-<div class="table-container">
-  <div class="table-toolbar">
-    <div class="table-toolbar-left">
-      <div class="table-search">
-        <i class="fas fa-search" style="color: var(--text-muted);"></i>
-        <input type="text" id="payslipSearch" placeholder="Search payslips..." />
-      </div>
+<!-- Stats Cards -->
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+  <div class="stat-card">
+    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea, #764ba2); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
+      <i class="fas fa-file-invoice"></i>
     </div>
-    <div class="table-toolbar-right">
-      <span class="badge badge-info" style="font-size: 13px;">{{ payslips|length }} Payslips</span>
+    <div class="stat-info">
+      <span class="stat-value">{{ payslips|length }}</span>
+      <span class="stat-label">Total Payslips</span>
     </div>
   </div>
-  <table class="table" id="payslipTable">
-    <thead>
-      <tr>
-        <th>Employee</th>
-        <th>Employee #</th>
-        <th>Month</th>
-        <th>Basic Salary</th>
-        <th>Net Salary</th>
-        <th>Status</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for p in payslips %}
-      <tr data-month="{{ p.month }}">
-        <td><strong>{{ p.employee.name if p.employee else p.employee_name }}</strong></td>
-        <td><span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span></td>
-        <td><span class="badge badge-info">{{ p.month }}</span></td>
-        <td>GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</td>
-        <td><strong>GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
-        <td>
-          {% if p.pdf_generated %}
-          <span class="badge badge-success">PDF Ready</span>
-          {% else %}
-          <span class="badge badge-warning">Pending</span>
-          {% endif %}
-        </td>
-        <td>
-          <div class="btn-group" style="display: flex; gap: 4px;">
-            <button class="btn btn-sm btn-ghost preview-btn" data-id="{{ p.id }}" title="Preview"><i class="fas fa-eye"></i></button>
-            <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download"><i class="fas fa-download"></i></a>
-            <button class="btn btn-sm btn-ghost email-btn" data-id="{{ p.id }}" title="Send Email" style="color: var(--accent);"><i class="fas fa-envelope"></i></button>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="stat-card">
+    <div class="stat-icon" style="background: linear-gradient(135deg, #11998e, #38ef7d); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
+      <i class="fas fa-coins"></i>
+    </div>
+    <div class="stat-info">
+      <span class="stat-value">GHS {{ "{:,.2f}".format(total_net_salary) }}</span>
+      <span class="stat-label">Total Net Salary</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb, #f5576c); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
+      <i class="fas fa-minus-circle"></i>
+    </div>
+    <div class="stat-info">
+      <span class="stat-value">GHS {{ "{:,.2f}".format(total_deductions) }}</span>
+      <span class="stat-label">Total Deductions</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe, #00f2fe); width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">
+      <i class="fas fa-check-circle"></i>
+    </div>
+    <div class="stat-info">
+      <span class="stat-value">{{ payslips|selectattr('pdf_generated')|list|length }}</span>
+      <span class="stat-label">PDFs Generated</span>
+    </div>
+  </div>
+</div>
+
+<!-- View Toggle -->
+<div class="view-toggle" style="display: flex; gap: 8px; margin-bottom: 16px; align-items: center;">
+  <button class="btn btn-sm btn-ghost active" id="cardViewBtn"><i class="fas fa-th-large"></i> Cards</button>
+  <button class="btn btn-sm btn-ghost" id="tableViewBtn"><i class="fas fa-list"></i> Table</button>
+  <span style="flex: 1;"></span>
+  <div class="table-search" style="max-width: 320px;">
+    <i class="fas fa-search" style="color: var(--text-muted);"></i>
+    <input type="text" id="payslipSearch" placeholder="Search by name or email..." />
+  </div>
+</div>
+
+<!-- Cards View (default) -->
+<div id="cardsView" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px;">
+  {% for p in payslips %}
+  <div class="payslip-card" data-name="{{ (p.employee.name if p.employee else p.employee_name)|lower }}" data-email="{{ (p.employee.email if p.employee else '')|lower }}" data-month="{{ p.month }}">
+    <div class="payslip-card-header">
+      <div class="payslip-card-avatar">
+        <span>{{ ((p.employee.name if p.employee else p.employee_name)[:2]|upper) if (p.employee.name if p.employee else p.employee_name) else '??' }}</span>
+      </div>
+      <div class="payslip-card-info">
+        <h4 class="payslip-card-name">{{ p.employee.name if p.employee else p.employee_name }}</h4>
+        <span class="payslip-card-meta">
+          <span class="badge badge-info">{{ p.month }}</span>
+          <span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span>
+        </span>
+      </div>
+      <div class="payslip-card-status">
+        {% if p.pdf_generated %}
+        <span class="badge badge-success" title="PDF Ready"><i class="fas fa-file-pdf"></i></span>
+        {% else %}
+        <span class="badge badge-warning" title="Pending"><i class="fas fa-hourglass-half"></i></span>
+        {% endif %}
+      </div>
+    </div>
+    <div class="payslip-card-body">
+      <div class="payslip-card-row">
+        <span class="label">Basic Salary</span>
+        <span class="value">GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</span>
+      </div>
+      <div class="payslip-card-row">
+        <span class="label">Total Earnings</span>
+        <span class="value">GHS {{ "{:,.2f}".format(p.total_earnings or 0) }}</span>
+      </div>
+      <div class="payslip-card-row">
+        <span class="label">Total Deductions</span>
+        <span class="value" style="color: #dc3545;">- GHS {{ "{:,.2f}".format(p.total_deductions or 0) }}</span>
+      </div>
+      <div class="payslip-card-row payslip-card-net">
+        <span class="label">Net Salary</span>
+        <span class="value">GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</span>
+      </div>
+    </div>
+    <div class="payslip-card-actions">
+      <button class="btn btn-sm btn-primary preview-btn" data-id="{{ p.id }}">
+        <i class="fas fa-eye"></i> Preview
+      </button>
+      <button class="btn btn-sm btn-secondary generate-pdf-btn" data-id="{{ p.id }}">
+        <i class="fas fa-file-pdf"></i> Generate PDF
+      </button>
+      <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download PDF" target="_blank" rel="noopener">
+        <i class="fas fa-download"></i>
+      </a>
+    </div>
+  </div>
+  {% endfor %}
   {% if not payslips %}
-  <div class="empty-state">
-    <div class="empty-state-icon" style="font-size: 36px;">📄</div>
+  <div style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+    <div style="font-size: 36px;">📄</div>
     <h4>No Payslips Found</h4>
     <p>Upload payroll data to generate payslips.</p>
     <a href="/upload" class="btn btn-primary">Upload Now</a>
@@ -86,20 +141,80 @@
   {% endif %}
 </div>
 
+<!-- Table View (hidden by default) -->
+<div id="tableView" style="display: none;">
+  <div class="table-container">
+    <table class="table" id="payslipTable">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Employee #</th>
+          <th>Email</th>
+          <th>Month</th>
+          <th>Basic Salary</th>
+          <th>Net Salary</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in payslips %}
+        <tr data-name="{{ (p.employee.name if p.employee else p.employee_name)|lower }}" data-email="{{ (p.employee.email if p.employee else '')|lower }}" data-month="{{ p.month }}">
+          <td><strong>{{ p.employee.name if p.employee else p.employee_name }}</strong></td>
+          <td><span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span></td>
+          <td><small>{{ p.employee.email if p.employee else '—' }}</small></td>
+          <td><span class="badge badge-info">{{ p.month }}</span></td>
+          <td>GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</td>
+          <td><strong>GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
+          <td>
+            {% if p.pdf_generated %}
+            <span class="badge badge-success">PDF Ready</span>
+            {% else %}
+            <span class="badge badge-warning">Pending</span>
+            {% endif %}
+          </td>
+          <td>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn btn-sm btn-ghost preview-btn" data-id="{{ p.id }}" title="Preview"><i class="fas fa-eye"></i></button>
+              <button class="btn btn-sm btn-ghost generate-pdf-btn" data-id="{{ p.id }}" title="Generate PDF"><i class="fas fa-file-pdf"></i></button>
+              <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download" target="_blank" rel="noopener"><i class="fas fa-download"></i></a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not payslips %}
+    <div style="text-align: center; padding: 40px;">
+      <div style="font-size: 36px;">📄</div>
+      <h4>No Payslips Found</h4>
+      <p>Upload payroll data to generate payslips.</p>
+      <a href="/upload" class="btn btn-primary">Upload Now</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
 <!-- Preview Modal -->
-<div class="modal fade" id="previewModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Payslip Preview</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title"><i class="fas fa-file-invoice"></i> Payslip Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body" id="previewContent">
-        <div class="loading-spinner"></div>
+      <div class="modal-body" id="previewContent" style="max-height: 80vh; overflow-y: auto; padding: 20px;">
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2 text-muted">Click preview to load payslip data...</p>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <a href="#" class="btn btn-primary" id="downloadBtn">Download PDF</a>
+        <button class="btn btn-primary" id="previewGeneratePdfBtn"><i class="fas fa-file-pdf"></i> Generate PDF</button>
+        <a href="#" class="btn btn-success" id="previewDownloadBtn" target="_blank" rel="noopener"><i class="fas fa-download"></i> Download PDF</a>
       </div>
     </div>
   </div>
@@ -107,88 +222,397 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<style>
+/* ===== Payslip Card Styles ===== */
+.payslip-card {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  transition: all 0.25s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.payslip-card:hover {
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+  transform: translateY(-3px);
+  border-color: #667eea;
+}
+.payslip-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: linear-gradient(135deg, #f8f9fe, #eef1ff);
+  border-bottom: 1px solid #e2e8f0;
+}
+.payslip-card-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.payslip-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.payslip-card-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.payslip-card-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.payslip-card-status {
+  flex-shrink: 0;
+}
+.payslip-card-body {
+  padding: 16px 18px;
+}
+.payslip-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.payslip-card-row:last-of-type {
+  border-bottom: none;
+}
+.payslip-card-row .label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+.payslip-card-row .value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.payslip-card-net .label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.payslip-card-net .value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #10b981;
+}
+.payslip-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #fafbfc;
+}
+.payslip-card-actions .btn {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+}
+/* ===== Preview Modal Styles ===== */
+.payslip-preview {
+  max-width: 780px;
+  margin: 0 auto;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+.payslip-preview .payslip-header {
+  text-align: center;
+  border-bottom: 3px solid #667eea;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+}
+.payslip-preview .payslip-header h3 {
+  margin: 0 0 4px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #1e293b;
+  letter-spacing: 1px;
+}
+.payslip-preview .payslip-header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+.payslip-preview .payslip-employee-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+  padding: 16px 20px;
+  background: #f8f9fe;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+.payslip-preview .info-item {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.payslip-preview .info-item .info-label {
+  color: #64748b;
+  font-weight: 500;
+  min-width: 95px;
+  flex-shrink: 0;
+}
+.payslip-preview .info-item span:last-child {
+  font-weight: 600;
+  color: #1e293b;
+}
+.payslip-preview .payslip-section {
+  margin-bottom: 24px;
+}
+.payslip-preview .payslip-section h5 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #667eea;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.payslip-preview .payroll-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.payslip-preview .payroll-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 14px;
+}
+.payslip-preview .payroll-table td:first-child {
+  color: #64748b;
+  font-weight: 500;
+  width: 55%;
+}
+.payslip-preview .payroll-table td:last-child {
+  text-align: right;
+  font-weight: 600;
+  color: #1e293b;
+}
+.payslip-preview .payroll-table tr.total-row td {
+  font-weight: 700;
+  font-size: 15px;
+  color: #1e293b;
+  border-top: 2px solid #1e293b;
+  padding-top: 12px;
+}
+.payslip-preview .payroll-table tr.net-row td {
+  font-size: 20px;
+  color: #10b981;
+  border-top: 3px solid #10b981;
+  padding-top: 12px;
+  padding-bottom: 8px;
+}
+.payslip-preview .payslip-footer {
+  text-align: center;
+  margin-top: 24px;
+  padding: 16px;
+  border-top: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+@media (max-width: 768px) {
+  .payslip-card-avatar { width: 40px; height: 40px; font-size: 15px; }
+  #cardsView { grid-template-columns: 1fr !important; }
+  .payslip-preview .payslip-employee-info { grid-template-columns: 1fr; }
+}
+</style>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  // Search functionality
-  var searchInput = document.getElementById('payslipSearch');
-  var monthSelect = document.getElementById('monthSelectPayslip');
-  var table = document.getElementById('payslipTable');
+(function() {
+  function initPayslips() {
+    var cardsView = document.getElementById('cardsView');
+    var tableView = document.getElementById('tableView');
+    var cardBtn = document.getElementById('cardViewBtn');
+    var tableBtn = document.getElementById('tableViewBtn');
+    var searchInput = document.getElementById('payslipSearch');
+    var monthSelect = document.getElementById('monthSelectPayslip');
+    var currentPreviewId = null;
 
-  function filterTable() {
-    var search = (searchInput.value || '').toLowerCase();
-    var month = monthSelect ? monthSelect.value : '';
-    var rows = table.querySelectorAll('tbody tr');
-    rows.forEach(function(row) {
-      var text = row.textContent.toLowerCase();
-      var rowMonth = row.getAttribute('data-month') || '';
-      row.style.display = text.includes(search) && (!month || rowMonth === month) ? '' : 'none';
-    });
-  }
+    if (!cardsView || !tableView) return;
 
-  if (searchInput) searchInput.addEventListener('keyup', filterTable);
-  if (monthSelect) monthSelect.addEventListener('change', filterTable);
-
-  // Preview buttons
-  document.querySelectorAll('.preview-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var id = this.getAttribute('data-id');
-      fetch('/payslips/' + id + '/data')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          var html = '<div class="table-container"><table class="table">';
-          html += '<tr><th>Employee</th><td>' + (data.employee_name || '') + '</td></tr>';
-          html += '<tr><th>Employee #</th><td>' + (data.employee_number || '') + '</td></tr>';
-          html += '<tr><th>Month</th><td>' + (data.month || '') + '</td></tr>';
-          html += '<tr><th>Basic Salary</th><td>GHS ' + (data.basic_salary || 0).toLocaleString() + '</td></tr>';
-          html += '<tr><th>Net Salary</th><td><strong>GHS ' + (data.net_salary || 0).toLocaleString() + '</strong></td></tr>';
-          html += '<tr><th>PAYE Tax</th><td>GHS ' + (data.paye || 0).toLocaleString() + '</td></tr>';
-          html += '<tr><th>Tithe</th><td>GHS ' + (data.tithe || 0).toLocaleString() + '</td></tr>';
-          html += '<tr><th>Total Deductions</th><td>GHS ' + (data.total_deductions || 0).toLocaleString() + '</td></tr>';
-          html += '</table></div>';
-          document.getElementById('previewContent').innerHTML = html;
-          document.getElementById('downloadBtn').href = '/payslips/' + id + '/download';
-          new bootstrap.Modal(document.getElementById('previewModal')).show();
-        });
-    });
-  });
-
-  // Email buttons
-  document.querySelectorAll('.email-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var id = this.getAttribute('data-id');
-      if (confirm('Send this payslip via email?')) {
-        window.location.href = '/payslips/' + id + '/send-email';
+    // ─── View Toggle ───
+    function switchView(view) {
+      if (view === 'cards') {
+        cardsView.style.display = 'grid';
+        tableView.style.display = 'none';
+      } else {
+        cardsView.style.display = 'none';
+        tableView.style.display = '';
       }
-    });
-  });
+      if (cardBtn) cardBtn.classList.toggle('active', view === 'cards');
+      if (tableBtn) tableBtn.classList.toggle('active', view === 'table');
+    }
 
-  // Generate all button
-  var genBtn = document.getElementById('generateAllBtn');
-  if (genBtn) {
-    genBtn.addEventListener('click', function() {
-      var month = monthSelect ? monthSelect.value : '__ALL__';
-      if (confirm('Generate PDFs for ' + (month || 'all months') + '?')) {
-        var btn = this;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-        fetch('/payslips/generate-all', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'month=' + encodeURIComponent(month || '__ALL__')
-        })
+    if (cardBtn) cardBtn.onclick = function() { switchView('cards'); };
+    if (tableBtn) tableBtn.onclick = function() { switchView('table'); };
+
+    // ─── Search & Filter ───
+    function filter() {
+      var search = searchInput ? searchInput.value.toLowerCase().trim() : '';
+      var month = monthSelect ? monthSelect.value : '';
+
+      document.querySelectorAll('.payslip-card').forEach(function(c) {
+        var n = (c.getAttribute('data-name') || '').toLowerCase();
+        var e = (c.getAttribute('data-email') || '').toLowerCase();
+        var m = c.getAttribute('data-month') || '';
+        c.style.display = (n.indexOf(search) !== -1 || e.indexOf(search) !== -1) && (!month || m === month) ? '' : 'none';
+      });
+
+      document.querySelectorAll('#payslipTable tbody tr').forEach(function(r) {
+        var n = (r.getAttribute('data-name') || '').toLowerCase();
+        var e = (r.getAttribute('data-email') || '').toLowerCase();
+        var m = r.getAttribute('data-month') || '';
+        r.style.display = (n.indexOf(search) !== -1 || e.indexOf(search) !== -1) && (!month || m === month) ? '' : 'none';
+      });
+    }
+
+    if (searchInput) searchInput.oninput = filter;
+    if (monthSelect) monthSelect.onchange = filter;
+
+    // ─── Helper ───
+    function fmt(v) { return 'GHS ' + Number(v || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+    function buildPreview(d) {
+      var h = '<div class="payslip-preview">';
+      h += '<div class="payslip-header"><h3>DCLM PAYSLIP</h3><p>For the month of <strong>' + (d.month || '') + '</strong></p></div>';
+      h += '<div class="payslip-employee-info">';
+      h += '<div class="info-item"><span class="info-label">Employee Name</span><span>' + (d.employee_name || '') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Employee #</span><span>' + (d.employee_number || 'N/A') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Designation</span><span>' + (d.designation || '\u2014') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Department</span><span>' + (d.function || '\u2014') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Location</span><span>' + (d.location || '\u2014') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Bank</span><span>' + (d.bank_name || 'N/A') + ' ' + (d.bank_branch || '') + '</span></div>';
+      h += '<div class="info-item"><span class="info-label">Bank Account</span><span>' + (d.bank_number || 'N/A') + '</span></div>';
+      if (d.ssnit_number) h += '<div class="info-item"><span class="info-label">SSNIT #</span><span>' + d.ssnit_number + '</span></div>';
+      h += '</div>';
+      h += '<div class="payslip-section"><h5>EARNINGS</h5><table class="payroll-table">';
+      h += '<tr><td>Basic Salary</td><td>' + fmt(d.basic_salary || 0) + '</td></tr>';
+      if (d.meals_monthly) h += '<tr><td>Meals Monthly</td><td>' + fmt(d.meals_monthly || 0) + '</td></tr>';
+      if (d.responsibility_allowance) h += '<tr><td>Responsibility Allowance</td><td>' + fmt(d.responsibility_allowance || 0) + '</td></tr>';
+      if (d.cola) h += '<tr><td>COLA</td><td>' + fmt(d.cola || 0) + '</td></tr>';
+      if (d.leave_allowance) h += '<tr><td>Leave Allowance</td><td>' + fmt(d.leave_allowance || 0) + '</td></tr>';
+      if (d.other_earnings) h += '<tr><td>Other Earnings</td><td>' + fmt(d.other_earnings || 0) + '</td></tr>';
+      h += '<tr class="total-row"><td>Total Earnings</td><td>' + fmt(d.total_earnings || 0) + '</td></tr>';
+      h += '</table></div>';
+      h += '<div class="payslip-section"><h5>DEDUCTIONS</h5><table class="payroll-table">';
+      h += '<tr><td>PAYE Tax</td><td>' + fmt(d.paye || 0) + '</td></tr>';
+      if (d.tithe) h += '<tr><td>Tithe</td><td>' + fmt(d.tithe || 0) + '</td></tr>';
+      if (d.future_savings) h += '<tr><td>Future Savings</td><td>' + fmt(d.future_savings || 0) + '</td></tr>';
+      if (d.other_deductions) h += '<tr><td>Other Deductions</td><td>' + fmt(d.other_deductions || 0) + '</td></tr>';
+      h += '<tr class="total-row"><td>Total Deductions</td><td>' + fmt(d.total_deductions || 0) + '</td></tr>';
+      h += '</table></div>';
+      h += '<div class="payslip-section"><table class="payroll-table">';
+      h += '<tr class="net-row"><td><strong>NET SALARY</strong></td><td><strong>' + fmt(d.net_salary || 0) + '</strong></td></tr>';
+      if (d.employer_contribution) h += '<tr><td>Employer Contribution</td><td>' + fmt(d.employer_contribution || 0) + '</td></tr>';
+      h += '</table></div>';
+      h += '<div class="payslip-footer">This is a computer-generated payslip. No signature is required.</div>';
+      h += '</div>';
+      return h;
+    }
+
+    // ─── Preview ───
+    function openPreview(id) {
+      currentPreviewId = id;
+      var content = document.getElementById('previewContent');
+      if (!content) return;
+      content.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading payslip data...</p></div>';
+      var dlBtn = document.getElementById('previewDownloadBtn');
+      if (dlBtn) dlBtn.href = '/payslips/' + id + '/download';
+      var genBtn = document.getElementById('previewGeneratePdfBtn');
+      if (genBtn) genBtn.setAttribute('data-id', id);
+      fetch('/payslips/' + id + '/data').then(function(r) {
+        if (!r.ok) throw new Error('Failed to load payslip data');
+        return r.json();
+      }).then(function(data) {
+        content.innerHTML = buildPreview(data);
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+      }).catch(function(err) {
+        content.innerHTML = '<div class="alert alert-danger text-center py-4"><i class="fas fa-exclamation-triangle"></i> ' + err.message + '</div>';
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+      });
+    }
+
+    // ─── PDF Generation ───
+    function genPdf(id) {
+      var btns = document.querySelectorAll('.generate-pdf-btn[data-id="' + id + '"], #previewGeneratePdfBtn');
+      btns.forEach(function(b) { b.disabled = true; b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...'; });
+      fetch('/payslips/' + id + '/generate-pdf', { method: 'POST' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate All PDFs';
-          if (data.success) {
-            location.reload();
-          } else {
-            alert(data.message);
+          if (!data.success) { alert('Failed: ' + (data.message || 'Unknown')); return; }
+          if (currentPreviewId === id) {
+            fetch('/payslips/' + id + '/data').then(function(r) { return r.json(); }).then(function(d) {
+              var c = document.getElementById('previewContent');
+              if (c) c.innerHTML = buildPreview(d);
+              var dl = document.getElementById('previewDownloadBtn');
+              if (dl) dl.href = '/payslips/' + id + '/download';
+            });
           }
+          setTimeout(function() { window.location.reload(); }, 1000);
+        })
+        .catch(function(err) { alert('Error: ' + err.message); })
+        .finally(function() {
+          btns.forEach(function(b) { b.disabled = false; b.innerHTML = '<i class="fas fa-file-pdf"></i> Generate PDF'; });
         });
-      }
+    }
+
+    // ─── Event Delegation ───
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.preview-btn');
+      if (btn) { e.preventDefault(); openPreview(btn.getAttribute('data-id')); }
     });
+    document.addEventListener('click', function(e) {
+      var btn = e.target.closest('.generate-pdf-btn');
+      if (btn) { e.preventDefault(); genPdf(btn.getAttribute('data-id')); }
+    });
+
+    var pGenBtn = document.getElementById('previewGeneratePdfBtn');
+    if (pGenBtn) pGenBtn.onclick = function(e) { e.preventDefault(); var id = this.getAttribute('data-id'); if (id) genPdf(id); };
+
+    // ─── Generate All ───
+    var genAllBtn = document.getElementById('generateAllBtn');
+    if (genAllBtn) {
+      genAllBtn.onclick = function() {
+        var m = monthSelect ? monthSelect.value : '';
+        if (!confirm('Generate PDFs for ' + (m || 'all months') + '?')) return;
+        var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        fetch('/payslips/generate-all', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'month=' + encodeURIComponent(m || '__ALL__') })
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate All PDFs';
+            if (data.success) { if (window.showToast) window.showToast(data.message || 'PDFs generated', 'success'); setTimeout(function() { window.location.reload(); }, 1000); }
+            else { alert(data.message || 'Failed'); }
+          })
+          .catch(function(err) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf"></i> Generate All PDFs'; alert('Error: ' + err.message); });
+      };
+    }
   }
-});
+
+  // Run on DOM ready and SPA content load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPayslips);
+  } else {
+    initPayslips();
+  }
+  document.addEventListener('spa-content-loaded', initPayslips);
+})();
 </script>
 {% endblock %}

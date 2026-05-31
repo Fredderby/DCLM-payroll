@@ -12,6 +12,76 @@ from app.models.employee import Employee
 from app.models.loan import Loan
 from app.services.payroll_service import number_to_words, amount_to_words
 import os
+import tempfile
+import shutil
+import time
+import threading
+from datetime import datetime, timedelta
+
+# ── Temporary PDF Storage Configuration ──
+# PDF files are stored in a temp directory and auto-purged after this many hours
+PDF_TEMP_LIFETIME_HOURS = 24
+
+_pdf_temp_dir = None
+_cleanup_timer = None
+_cleanup_lock = threading.Lock()
+
+
+def get_pdf_temp_dir() -> str:
+    """Get or create the temporary directory for PDF storage."""
+    global _pdf_temp_dir
+    if _pdf_temp_dir is None:
+        _pdf_temp_dir = tempfile.mkdtemp(prefix="payslips_")
+        # Schedule cleanup
+        schedule_cleanup()
+    return _pdf_temp_dir
+
+
+def schedule_cleanup():
+    """Schedule cleanup of old PDF files."""
+    global _cleanup_timer
+    with _cleanup_lock:
+        if _cleanup_timer is None:
+            _cleanup_timer = threading.Timer(PDF_TEMP_LIFETIME_HOURS * 3600, cleanup_old_pdfs)
+            _cleanup_timer.daemon = True
+            _cleanup_timer.start()
+
+
+def cleanup_old_pdfs():
+    """Remove PDF files older than the configured lifetime."""
+    global _cleanup_timer, _pdf_temp_dir
+    try:
+        if _pdf_temp_dir and os.path.exists(_pdf_temp_dir):
+            now = time.time()
+            cutoff = now - (PDF_TEMP_LIFETIME_HOURS * 3600)
+            for fname in os.listdir(_pdf_temp_dir):
+                fpath = os.path.join(_pdf_temp_dir, fname)
+                if fname.endswith('.pdf') and os.path.isfile(fpath):
+                    file_time = os.path.getmtime(fpath)
+                    if file_time < cutoff:
+                        try:
+                            os.remove(fpath)
+                        except OSError:
+                            pass
+    except Exception:
+        pass
+    finally:
+        # Reschedule
+        with _cleanup_lock:
+            _cleanup_timer = None
+        schedule_cleanup()
+
+
+def get_pdf_output_dir(use_temp: bool = True) -> str:
+    """Get the output directory for generated PDFs.
+    
+    When use_temp is True (default), files are stored in a temporary directory
+    and automatically cleaned up after PDF_TEMP_LIFETIME_HOURS.
+    """
+    if use_temp:
+        return get_pdf_temp_dir()
+    return "payslips"
+
 
 def parse_bank_account(val: str):
     """Parse '601120033368, GCB, KUMASI MAIN' into (account_number, bank_name, bank_branch)"""
@@ -79,8 +149,15 @@ class WatermarkedDocTemplate(SimpleDocTemplate):
 
 
 def generate_payslip_pdf(db: Session, payroll_id: int,
-                         output_dir: str = "payslips"):
-    """Generate payslip PDF that matches the HTML preview exactly"""
+                         output_dir: str = None):
+    """Generate payslip PDF that matches the HTML preview exactly.
+    
+    If output_dir is None, a temporary directory is used and files are 
+    automatically cleaned up after PDF_TEMP_LIFETIME_HOURS.
+    """
+    if output_dir is None:
+        output_dir = get_pdf_output_dir(use_temp=True)
+    
     os.makedirs(output_dir, exist_ok=True)
 
     payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()

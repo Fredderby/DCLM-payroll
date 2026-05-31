@@ -623,14 +623,37 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
                     p.employee = emp
             set_cache(cache_key, payslips, ttl_seconds=120)
         
+        # Get distinct months for filter
+        payroll_months = db.query(PayrollRecord.month).distinct().order_by(PayrollRecord.month.desc()).all()
+        months = [m[0] for m in payroll_months if m[0]]
+        
+        selected_month = request.query_params.get("month", "")
+        
+        # Generate month-to-date stats
+        total_payslips = len(payslips)
+        total_net_salary = sum(p.net_salary or 0 for p in payslips)
+        total_earnings = sum(p.total_earnings or 0 for p in payslips)
+        total_deductions = sum(p.total_deductions or 0 for p in payslips)
+        
         template = templates.get_template("payslips.html")
-        rendered = template.render({"user": current_user, "payslips": payslips})
+        rendered = template.render({
+            "user": current_user, 
+            "payslips": payslips,
+            "months": months,
+            "selected_month": selected_month,
+            "total_payslips": total_payslips,
+            "total_net_salary": total_net_salary,
+            "total_earnings": total_earnings,
+            "total_deductions": total_deductions,
+            "success": request.query_params.get("success"),
+            "error": request.query_params.get("error")
+        })
         return HTMLResponse(content=rendered, media_type="text/html")
     except HTTPException:
         return RedirectResponse(url="/login", status_code=303)
     except Exception as e:
         template = templates.get_template("payslips.html")
-        rendered = template.render({"error": f"Error loading payslips: {str(e)}", "payslips": []})
+        rendered = template.render({"error": f"Error loading payslips: {str(e)}", "payslips": [], "months": [], "selected_month": ""})
         return HTMLResponse(content=rendered, media_type="text/html")
 
 @app.get("/payslips/{payroll_id}/data")
@@ -672,6 +695,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "bank_name": employee.bank_name if employee else "N/A",
         "bank_branch": employee.bank_branch if employee else "",
         "bank_number": employee.bank_number if employee else "N/A",
+        "email": employee.email if employee else "",
         "date_joined": str(employee.date_joined) if employee and employee.date_joined else "",
         "ssnit_number": employee.ssnit_number if employee else "",
         }
@@ -681,6 +705,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "month": payroll.month,
         "employee_name": payroll.employee_name or "N/A",
         "employee_number": emp_data.get("employee_number", "N/A"),
+        "email": emp_data.get("email", ""),
         "designation": emp_data.get("designation", ""),
         "function": emp_data.get("function", ""),
         "location": emp_data.get("location", ""),
@@ -709,7 +734,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
 @app.get("/payslips/{payroll_id}/download")
 async def download_payslip(payroll_id: int, request: Request, db: Session = Depends(get_db)):
     from app.models.payroll import PayrollRecord
-    from app.services.pdf_service import generate_payslip_pdf
+    from app.services.pdf_service import generate_payslip_pdf, get_pdf_temp_dir
     from fastapi.responses import FileResponse
     
     # Authenticate user
@@ -722,13 +747,22 @@ async def download_payslip(payroll_id: int, request: Request, db: Session = Depe
     if not payroll:
         raise HTTPException(status_code=404, detail="Payslip not found")
     
-    # Generate PDF on demand if not already generated
+    # Generate PDF on demand if not already generated (or regenerated from temp)
     if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(payroll.pdf_generated):
         pdf_path = generate_payslip_pdf(db, payroll.id)
         if not pdf_path:
             raise HTTPException(status_code=500, detail="Failed to generate payslip PDF")
         payroll.pdf_generated = pdf_path
         db.commit()
+    else:
+        # If the file still exists and was generated in temp dir, serve it
+        # Otherwise regenerate
+        if not os.path.exists(payroll.pdf_generated):
+            pdf_path = generate_payslip_pdf(db, payroll.id)
+            if not pdf_path:
+                raise HTTPException(status_code=500, detail="Failed to generate payslip PDF")
+            payroll.pdf_generated = pdf_path
+            db.commit()
     
     if not isinstance(payroll.pdf_generated, str) or not os.path.exists(payroll.pdf_generated):
         raise HTTPException(status_code=404, detail="PDF file not found")
@@ -924,6 +958,7 @@ async def generate_all_payslips(request: Request, month: str = Form(""), db: Ses
     return {"success": True, "message": f"Generated {generated} PDF(s) for {month}. Failed: {failed}"}
 
 
+@app.post("/payslips/{payroll_id}/generate-pdf", response_class=JSONResponse)
 @app.post("/payslips/generate-single/{payroll_id}", response_class=JSONResponse)
 async def generate_single_payslip(payroll_id: int, db: Session = Depends(get_db)):
     """Regenerate PDF for a single payslip"""

@@ -94,6 +94,10 @@
     // Re-execute any scripts
     reExecuteScripts(contentWrapper);
 
+    // Dispatch custom event for page-specific initializers
+    var event = new CustomEvent('spa-content-loaded', { detail: { url: url } });
+    document.dispatchEvent(event);
+
     // Scroll to top
     window.scrollTo(0, 0);
   }
