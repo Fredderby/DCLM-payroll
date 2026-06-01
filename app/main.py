@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, Depends, Form, File, UploadFile, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from typing import List
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -125,7 +126,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         from app.models.payroll import PayrollRecord
         from datetime import datetime
         from app.services.cache_service import get_cache, set_cache
-
+        
         cache_key = "dash"
         cached = get_cache(cache_key)
         if cached:
@@ -137,11 +138,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             total_payroll = db.query(PayrollRecord).with_entities(PayrollRecord.net_salary).all()
             total_payroll_sum = sum(p[0] or 0 for p in total_payroll)
             avg_net_salary = (total_payroll_sum / payslip_count) if payslip_count > 0 else 0
-
+            
             # Distinct months
             months = db.query(PayrollRecord.month).distinct().all()
             months_active = len([m[0] for m in months if m[0]])
-
+            
             stats = {
                 "employee_count": employee_count,
                 "payslip_count": payslip_count,
@@ -151,11 +152,14 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
                 "avg_net_salary": avg_net_salary,
                 "email_sent": 0
             }
-
-            # Recent payslips (last 5)
+            
+            # Recent payslips (last 5) with employee details attached
             recent_payslips = db.query(PayrollRecord).order_by(PayrollRecord.id.desc()).limit(5).all()
+            for p in recent_payslips:
+                emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
+                p.employee_obj = emp
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
-
+        
         template = templates.get_template("dashboard.html")
         rendered = template.render({
             "user": current_user,
@@ -407,15 +411,220 @@ async def staff_page(request: Request, db: Session = Depends(get_db)):
         from app.models.employee import Employee
         
         # Get all staff members
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list})
+        rendered = template.render({"user": current_user, "employees": employees})
         return HTMLResponse(content=rendered, media_type="text/html")
     except HTTPException:
         return RedirectResponse(url="/login", status_code=303)
+    except Exception as e:
+        template = templates.get_template("staff.html")
+        rendered = template.render({"user": get_current_user_web(request, db), "employees": [], "error": f"Error: {str(e)}"})
+        return HTMLResponse(content=rendered, media_type="text/html")
+
+@app.get("/staff/template/download")
+async def download_employee_template(request: Request, db: Session = Depends(get_db)):
+    """Download a CSV template for employee bulk upload"""
+    try:
+        current_user = get_current_user_web(request, db)
+    except Exception:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+    import csv
+    import io
+    import tempfile
+    
+    fieldnames = [
+        "employee_number", "name", "email", "function", "designation",
+        "location", "ssnit_number", "tax_relief", "employer_contribution",
+        "bank_number", "bank_name", "bank_branch", "date_joined"
+    ]
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerow({
+        "employee_number": "EMP001",
+        "name": "John Doe",
+        "email": "john@example.com",
+        "function": "Finance",
+        "designation": "Accountant",
+        "location": "Accra",
+        "ssnit_number": "SSNIT123456",
+        "tax_relief": "500",
+        "employer_contribution": "0",
+        "bank_number": "1234567890",
+        "bank_name": "GCB Bank",
+        "bank_branch": "Head Office",
+        "date_joined": "2024-01-15"
+    })
+    csv_bytes = output.getvalue().encode('utf-8-sig')
+    
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employee_template.csv"}
+    )
+
+@app.post("/staff/upload")
+async def upload_employees(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload CSV or Excel file to bulk add employees. Duplicates are automatically skipped."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    from app.models.employee import Employee
+    import pandas as pd
+    from io import BytesIO
+    from datetime import datetime
+    
+    if not file.filename:
+        employees = db.query(Employee).all()
+        template = templates.get_template("staff.html")
+        return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": "No file provided"}), media_type="text/html")
+    
+    try:
+        contents = await file.read()
+        ext = file.filename.rsplit('.', 1)[-1].lower()
+        
+        if ext == 'csv':
+            df = pd.read_csv(BytesIO(contents), dtype=str)
+        elif ext in ('xlsx', 'xls'):
+            df = pd.read_excel(BytesIO(contents), dtype=str)
+        else:
+            employees = db.query(Employee).all()
+            template = templates.get_template("staff.html")
+            return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": "Unsupported file format. Please upload CSV or Excel files."}), media_type="text/html")
+        
+        # Normalize column names
+        df.columns = [c.strip().lower().replace(' ', '_').replace('-', '_') for c in df.columns]
+        
+        # Map expected columns
+        col_map = {
+            'employee_number': ['employee_number', 'employee_no', 'emp_number', 'empid', 'employee_id'],
+            'name': ['name', 'employee_name', 'full_name', 'employeename'],
+            'email': ['email', 'e_mail', 'email_address'],
+            'function': ['function', 'department', 'dept', 'business_unit'],
+            'designation': ['designation', 'title', 'job_title', 'position'],
+            'location': ['location', 'office', 'branch', 'work_location'],
+            'ssnit_number': ['ssnit_number', 'ssnit', 'social_security', 'ssn'],
+            'tax_relief': ['tax_relief', 'taxrelief', 'tax_relief_amount'],
+            'employer_contribution': ['employer_contribution', 'employer_contr', 'employercontribution'],
+            'bank_number': ['bank_number', 'bank_no', 'account_number', 'bankaccount', 'bank_acc'],
+            'bank_name': ['bank_name', 'bank', 'bankname'],
+            'bank_branch': ['bank_branch', 'branch', 'bankbranch'],
+            'date_joined': ['date_joined', 'joined_date', 'start_date', 'employment_date', 'doj']
+        }
+        
+        normalized_cols = {}
+        for std_name, aliases in col_map.items():
+            for col in df.columns:
+                if col in aliases:
+                    normalized_cols[col] = std_name
+                    break
+        
+        df.rename(columns=normalized_cols, inplace=True)
+        
+        standard_cols = list(col_map.keys())
+        for col in df.columns:
+            if col not in standard_cols:
+                df.drop(columns=[col], inplace=True)
+        
+        if df.empty or 'name' not in df.columns or 'employee_number' not in df.columns:
+            employees = db.query(Employee).all()
+            template = templates.get_template("staff.html")
+            return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": "File must contain at least 'Name' and 'Employee Number' columns."}), media_type="text/html")
+        
+        # Build lookup sets from existing employees for multi-column dedup
+        existing_emps = db.query(Employee).all()
+        key_cols = ['employee_number', 'name', 'email', 'bank_number']
+        existing_lookups = {}
+        for col in key_cols:
+            existing_lookups[col] = set()
+        for emp in existing_emps:
+            for col in key_cols:
+                val = getattr(emp, col, None)
+                if val:
+                    existing_lookups[col].add(str(val).strip().lower())
+        
+        added_count = 0
+        skipped_count = 0
+        
+        for _, row in df.iterrows():
+            emp_num = str(row.get('employee_number', '')).strip()
+            name = str(row.get('name', '')).strip()
+            email = str(row.get('email', '')).strip()
+            bank_num = str(row.get('bank_number', '')).strip()
+            
+            if not emp_num or not name:
+                skipped_count += 1
+                continue
+            
+            match_count = 0
+            if emp_num.lower() in existing_lookups['employee_number']: match_count += 1
+            if name.lower() in existing_lookups['name']: match_count += 1
+            if email.lower() and email.lower() in existing_lookups['email']: match_count += 1
+            if bank_num.lower() and bank_num.lower() in existing_lookups['bank_number']: match_count += 1
+            
+            if match_count >= 3:
+                skipped_count += 1
+                continue
+            
+            date_obj = None
+            date_str = str(row.get('date_joined', '')).strip()
+            if date_str and date_str.lower() not in ('nan', 'none', ''):
+                for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d'):
+                    try:
+                        date_obj = datetime.strptime(date_str, fmt).date()
+                        break
+                    except ValueError:
+                        pass
+            
+            def parse_float(val, default=0):
+                try:
+                    v = str(val).strip()
+                    if v and v.lower() not in ('nan', 'none', ''):
+                        return float(v.replace(',', ''))
+                except (ValueError, TypeError):
+                    pass
+                return default
+            
+            employee = Employee(
+                employee_number=emp_num,
+                name=name,
+                email=str(row.get('email', '')).strip(),
+                function=str(row.get('function', '')).strip(),
+                designation=str(row.get('designation', '')).strip(),
+                location=str(row.get('location', '')).strip(),
+                ssnit_number=str(row.get('ssnit_number', '')).strip(),
+                tax_relief=str(row.get('tax_relief', '')).strip(),
+                employer_contribution=parse_float(row.get('employer_contribution')),
+                bank_number=str(row.get('bank_number', '')).strip(),
+                bank_name=str(row.get('bank_name', '')).strip(),
+                bank_branch=str(row.get('bank_branch', '')).strip(),
+                date_joined=date_obj
+            )
+            db.add(employee)
+            existing_lookups['employee_number'].add(emp_num.lower())
+            added_count += 1
+        
+        db.commit()
+        
+        employees = db.query(Employee).all()
+        template = templates.get_template("staff.html")
+        msg = f"Successfully added {added_count} employee(s)."
+        if skipped_count > 0:
+            msg += f" {skipped_count} row(s) skipped (duplicates or invalid data)."
+        return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "success": msg}), media_type="text/html")
+    
+    except Exception as e:
+        db.rollback()
+        employees = db.query(Employee).all()
+        template = templates.get_template("staff.html")
+        return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": f"Upload failed: {str(e)}"}), media_type="text/html")
 
 @app.post("/staff/add")
+@app.post("/staff/create")
 async def add_staff(request: Request, employee_number: str = Form(...), name: str = Form(...), 
                    email: str = Form(...), function: str = Form(default=""),
                    designation: str = Form(default=""), location: str = Form(default=""),
@@ -433,13 +642,13 @@ async def add_staff(request: Request, employee_number: str = Form(...), name: st
     
     # Check if employee exists
     existing = db.query(Employee).filter(
-        (Employee.email == email) | (Employee.employee_number == employee_number)
+    (Employee.email == email) | (Employee.employee_number == employee_number)
     ).first()
     
     if existing:
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "error": "Employee already exists"})
+        rendered = template.render({"user": current_user, "employees": employees, "error": "Employee already exists"})
         return HTMLResponse(content=rendered, media_type="text/html")
     
     try:
@@ -465,33 +674,55 @@ async def add_staff(request: Request, employee_number: str = Form(...), name: st
         db.add(employee)
         db.commit()
         
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "success": f"Staff member {name} added successfully"})
+        rendered = template.render({"user": current_user, "employees": employees, "success": f"Staff member {name} added successfully"})
         return HTMLResponse(content=rendered, media_type="text/html")
     except Exception as e:
         db.rollback()
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "error": f"Failed to add staff: {str(e)}"})
+        rendered = template.render({"user": current_user, "employees": employees, "error": f"Failed to add staff: {str(e)}"})
         return HTMLResponse(content=rendered, media_type="text/html")
 
-@app.get("/staff/edit/{staff_id}", response_class=HTMLResponse)
-async def edit_staff_page(request: Request, staff_id: int, db: Session = Depends(get_db)):
+@app.get("/staff/{staff_id}/details")
+async def staff_details(request: Request, staff_id: int, db: Session = Depends(get_db)):
+    """Return employee details as JSON for view/edit modals"""
     try:
         current_user = get_current_user_web(request, db)
-        from app.models.employee import Employee
-        
-        staff = db.query(Employee).filter(Employee.id == staff_id).first()
-        if not staff:
-            raise HTTPException(status_code=404, detail="Staff member not found")
-        
-        staff_list = db.query(Employee).all()
-        template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff": staff, "staff_list": staff_list})
-        return HTMLResponse(content=rendered, media_type="text/html")
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
+    except Exception:
+        return JSONResponse(status_code=401, content={"error": "Not authenticated"})
+    
+    from app.models.employee import Employee
+    from datetime import date as dt_date
+    
+    employee = db.query(Employee).filter(Employee.id == staff_id).first()
+    if not employee:
+        return JSONResponse(status_code=404, content={"error": "Staff member not found"})
+    
+    djoin = ""
+    if employee.date_joined:
+        if isinstance(employee.date_joined, (dt_date,)):
+            djoin = employee.date_joined.isoformat()
+        else:
+            djoin = str(employee.date_joined)
+    
+    return {
+        "id": employee.id,
+        "name": employee.name,
+        "employee_number": employee.employee_number,
+        "email": employee.email or "",
+        "function": employee.function or "",
+        "designation": employee.designation or "",
+        "location": employee.location or "",
+        "ssnit_number": employee.ssnit_number or "",
+        "tax_relief": employee.tax_relief or "",
+        "employer_contribution": float(employee.employer_contribution or 0),
+        "bank_number": employee.bank_number or "",
+        "bank_name": employee.bank_name or "",
+        "bank_branch": employee.bank_branch or "",
+        "date_joined": djoin
+    }
 
 @app.post("/staff/update/{staff_id}")
 async def update_staff(request: Request, staff_id: int, employee_number: str = Form(...), name: str = Form(...), 
@@ -521,9 +752,9 @@ async def update_staff(request: Request, staff_id: int, employee_number: str = F
         ).first()
         
         if existing:
-            staff_list = db.query(Employee).all()
+            employees = db.query(Employee).all()
             template = templates.get_template("staff.html")
-            rendered = template.render({"user": current_user, "staff": staff, "staff_list": staff_list, 
+            rendered = template.render({"user": current_user, "staff": staff, "employees": employees, 
                                       "error": "Email or employee number already exists"})
             return HTMLResponse(content=rendered, media_type="text/html")
         
@@ -546,16 +777,16 @@ async def update_staff(request: Request, staff_id: int, employee_number: str = F
         
         db.commit()
         
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "success": f"Staff member {name} updated successfully"})
+        rendered = template.render({"user": current_user, "employees": employees, "success": f"Staff member {name} updated successfully"})
         return HTMLResponse(content=rendered, media_type="text/html")
     except Exception as e:
         db.rollback()
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         staff = db.query(Employee).filter(Employee.id == staff_id).first()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff": staff, "staff_list": staff_list, "error": f"Failed to update staff: {str(e)}"})
+        rendered = template.render({"user": current_user, "staff": staff, "employees": employees, "error": f"Failed to update staff: {str(e)}"})
         return HTMLResponse(content=rendered, media_type="text/html")
 
 @app.post("/staff/delete/{staff_id}")
@@ -570,24 +801,24 @@ async def delete_staff(request: Request, staff_id: int, db: Session = Depends(ge
     try:
         staff = db.query(Employee).filter(Employee.id == staff_id).first()
         if not staff:
-            staff_list = db.query(Employee).all()
+            employees = db.query(Employee).all()
             template = templates.get_template("staff.html")
-            rendered = template.render({"user": current_user, "staff_list": staff_list, "error": "Staff member not found"})
+            rendered = template.render({"user": current_user, "employees": employees, "error": "Staff member not found"})
             return HTMLResponse(content=rendered, media_type="text/html")
         
         staff_name = staff.name
         db.delete(staff)
         db.commit()
         
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "success": f"Staff member {staff_name} deleted successfully"})
+        rendered = template.render({"user": current_user, "employees": employees, "success": f"Staff member {staff_name} deleted successfully"})
         return HTMLResponse(content=rendered, media_type="text/html")
     except Exception as e:
         db.rollback()
-        staff_list = db.query(Employee).all()
+        employees = db.query(Employee).all()
         template = templates.get_template("staff.html")
-        rendered = template.render({"user": current_user, "staff_list": staff_list, "error": f"Failed to delete staff: {str(e)}"})
+        rendered = template.render({"user": current_user, "employees": employees, "error": f"Failed to delete staff: {str(e)}"})
         return HTMLResponse(content=rendered, media_type="text/html")
 
 @app.get("/payslips", response_class=HTMLResponse)
@@ -1019,6 +1250,28 @@ async def loans_page(request: Request, db: Session = Depends(get_db)):
     
     from app.models.loan import Loan
     from app.models.employee import Employee
+    
+    loans = db.query(Loan).order_by(Loan.id.desc()).all()
+    all_employees = db.query(Employee).filter(Employee.name.isnot(None)).all()
+    
+    template = templates.get_template("loans.html")
+    rendered = template.render({
+        "user": current_user,
+        "loans": loans,
+        "all_employees": all_employees
+    })
+    return HTMLResponse(content=rendered, media_type="text/html")
+
+
+@app.get("/api/employee-names")
+async def loans_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    from app.models.loan import Loan
+    from app.models.employee import Employee
     from app.services.cache_service import get_cache, set_cache
     import json
     
@@ -1080,6 +1333,56 @@ async def loans_page(request: Request, db: Session = Depends(get_db)):
     })
     return HTMLResponse(content=rendered, media_type="text/html")
 
+@app.post("/loans/bulk-add")
+async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
+    """Register loans for multiple employees with individual amounts."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    from app.models.loan import Loan
+    
+    # Parse form data manually since we have paired arrays
+    form = await request.form()
+    employee_names = form.getlist("employee_names")
+    loan_amounts = form.getlist("loan_amounts")
+    bank_name = form.get("bank_name", "") or ""
+    months_to_pay = int(form.get("months_to_pay", 12))
+    interest_amount = float(form.get("interest_amount", 0)) if form.get("interest_amount") else 0
+    
+    added = 0
+    for i, name in enumerate(employee_names):
+        if not name.strip():
+            continue
+        
+        # Get individual loan amount for this employee
+        loan_amount = float(loan_amounts[i]) if i < len(loan_amounts) else 0
+        if loan_amount <= 0:
+            continue
+        
+        total_receivable = loan_amount + interest_amount
+        monthly_deduction = total_receivable / months_to_pay if months_to_pay > 0 else total_receivable
+        
+        loan = Loan(
+            employee_name=name.strip(),
+            bank_name=bank_name,
+            loan_amount=loan_amount,
+            months_to_pay=months_to_pay,
+            interest_amount=interest_amount,
+            total_receivable=total_receivable,
+            monthly_deduction=monthly_deduction,
+            amount_paid=0,
+            months_paid=0,
+            balance=total_receivable,
+            status="Active"
+        )
+        db.add(loan)
+        added += 1
+    
+    db.commit()
+    return RedirectResponse(url=f"/loans?success=Bulk+loan+registered+for+{added}+employee(s)", status_code=303)
+
 @app.post("/loans/add")
 async def add_loan(request: Request, employee_name: str = Form(...), bank_name: str = Form(default=""),
                    loan_amount: float = Form(default=0), interest_amount: float = Form(default=0),
@@ -1118,9 +1421,22 @@ async def add_loan(request: Request, employee_name: str = Form(...), bank_name: 
         db.rollback()
         return RedirectResponse(url=f"/loans?error={str(e)}", status_code=303)
 
-@app.post("/loans/{loan_id}/pay")
-async def pay_loan(request: Request, loan_id: int, payment_amount: float = Form(...), 
-                   db: Session = Depends(get_db)):
+@app.get("/api/employee-names")
+async def get_employee_names(request: Request, db: Session = Depends(get_db)):
+    """Return list of employee names for autocomplete"""
+    try:
+        current_user = get_current_user_web(request, db)
+    except Exception:
+        return JSONResponse(content={"names": []})
+    
+    from app.models.employee import Employee
+    employees = db.query(Employee).filter(Employee.name.isnot(None)).all()
+    names = [e.name for e in employees if e.name]
+    return JSONResponse(content={"names": names})
+
+@app.post("/loans/pay")
+async def pay_loan(request: Request, loan_id: int = Form(...), db: Session = Depends(get_db)):
+    """Record one monthly payment. Reduces months remaining and increases amount paid."""
     try:
         current_user = get_current_user_web(request, db)
     except HTTPException:
@@ -1133,6 +1449,7 @@ async def pay_loan(request: Request, loan_id: int, payment_amount: float = Form(
         return RedirectResponse(url="/loans?error=Loan+not+found", status_code=303)
     
     try:
+        payment_amount = loan.monthly_deduction or 0
         loan.amount_paid = (loan.amount_paid or 0) + payment_amount
         loan.months_paid = (loan.months_paid or 0) + 1
         loan.balance = max(0, (loan.total_receivable or 0) - (loan.amount_paid or 0))
@@ -1145,6 +1462,28 @@ async def pay_loan(request: Request, loan_id: int, payment_amount: float = Form(
     except Exception as e:
         db.rollback()
         return RedirectResponse(url=f"/loans?error={str(e)}", status_code=303)
+
+@app.post("/loans/complete/{loan_id}")
+async def complete_loan(request: Request, loan_id: int, db: Session = Depends(get_db)):
+    """Mark a loan as completed."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    from app.models.loan import Loan
+    
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        return RedirectResponse(url="/loans?error=Loan+not+found", status_code=303)
+    
+    loan.status = "Completed"
+    loan.balance = 0
+    loan.amount_paid = loan.total_receivable or 0
+    if loan.months_to_pay:
+        loan.months_paid = loan.months_to_pay
+    db.commit()
+    return RedirectResponse(url=f"/loans?success=Loan+{loan.employee_name}+marked+as+completed", status_code=303)
 
 @app.post("/loans/{loan_id}/default")
 async def default_loan(loan_id: int, db: Session = Depends(get_db)):

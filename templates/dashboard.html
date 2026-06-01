@@ -3,210 +3,175 @@
 {% block title %}Dashboard - DCLM Payroll{% endblock %}
 
 {% block page_title %}Dashboard{% endblock %}
-{% block page_subtitle %}{{ now().strftime("%A, %B %d, %Y") if now is defined else '' }}{% endblock %}
-
-{% block extra_head %}
-<style>
-  .dashboard-bottom-row { display: grid; grid-template-columns: 7fr 5fr; gap: 1.5rem; margin-top: 1.5rem; }
-  @media (max-width: 992px) { .dashboard-bottom-row { grid-template-columns: 1fr; } }
-</style>
-{% endblock %}
+{% block page_subtitle %}<span id="dashboardDate"></span>{% endblock %}
 
 {% block header_actions %}
-  <a href="/upload" class="btn btn-primary btn-sm"><i class="fas fa-upload"></i> Upload Payroll</a>
+<a href="/upload" class="btn btn-primary btn-sm"><i class="fas fa-upload"></i> Upload Payslip</a>
 {% endblock %}
 
 {% block content %}
 <!-- Stats Cards -->
-<div class="stats-grid">
-  <div class="stat-card">
-    <div class="stat-card-icon blue"><i class="fas fa-users"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">{{ stats.employee_count or 0 }}</div>
-      <div class="stat-label">Total Employees</div>
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+  <div class="stat-card" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ stats.employee_count }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Employees</span>
     </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-users"></i></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-card-icon green"><i class="fas fa-file-invoice-dollar"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div>
-      <div class="stat-label">Total Payroll</div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #11998e, #38ef7d); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ stats.payslip_count }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Payslips</span>
     </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-file-invoice"></i></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-card-icon orange"><i class="fas fa-file-pdf"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">{{ stats.payslip_count or 0 }}</div>
-      <div class="stat-label">Payslips Generated</div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">GHS {{ "{:,.2f}".format(stats.total_payroll) }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Payroll</span>
     </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-coins"></i></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-card-icon purple"><i class="fas fa-calendar-alt"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">{{ stats.months_active or 0 }}</div>
-      <div class="stat-label">Payroll Months</div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #4facfe, #00f2fe); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ stats.months_active }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Active Months</span>
     </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-calendar-alt"></i></div>
   </div>
-  <div class="stat-card">
-    <div class="stat-card-icon cyan"><i class="fas fa-upload"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">{{ stats.upload_count or 0 }}</div>
-      <div class="stat-label">Total Uploads</div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #fc5c7d, #6a82fb); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">GHS {{ "{:,.2f}".format(stats.avg_net_salary) }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Avg Net Salary</span>
     </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-card-icon red"><i class="fas fa-envelope"></i></div>
-    <div class="stat-card-content">
-      <div class="stat-number">{{ stats.email_sent or 0 }}</div>
-      <div class="stat-label">Emails Sent</div>
-    </div>
-  </div>
-</div>
-
-<!-- Quick Actions -->
-<div class="card mb-4">
-  <div class="card-header">
-    <h4><i class="fas fa-bolt"></i> Quick Actions</h4>
-  </div>
-  <div class="card-body">
-    <div class="quick-actions-grid">
-      <a href="/staff" class="quick-action-card">
-        <div class="qa-icon" style="background:#eef2ff;color:#4f46e5"><i class="fas fa-user-plus"></i></div>
-        <div>
-          <h6>Add Staff</h6>
-          <p>Register new employee</p>
-        </div>
-      </a>
-      <a href="/upload" class="quick-action-card">
-        <div class="qa-icon" style="background:#ecfdf5;color:#10b981"><i class="fas fa-cloud-upload-alt"></i></div>
-        <div>
-          <h6>Upload Payroll</h6>
-          <p>Process monthly payroll</p>
-        </div>
-      </a>
-      <a href="/payslips" class="quick-action-card">
-        <div class="qa-icon" style="background:#fff7ed;color:#f97316"><i class="fas fa-file-pdf"></i></div>
-        <div>
-          <h6>View Payslips</h6>
-          <p>Download PDF payslips</p>
-        </div>
-      </a>
-      <a href="/send-payslips" class="quick-action-card">
-        <div class="qa-icon" style="background:#f5f3ff;color:#8b5cf6"><i class="fas fa-paper-plane"></i></div>
-        <div>
-          <h6>Send Emails</h6>
-          <p>Email payslips to staff</p>
-        </div>
-      </a>
-    </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-chart-line"></i></div>
   </div>
 </div>
 
 <!-- Bottom Row -->
-<div class="dashboard-bottom-row">
-  <div class="card">
-    <div class="card-header">
-      <h4><i class="fas fa-clock"></i> Recent Payslips</h4>
-      <a href="/payslips" class="btn btn-sm btn-secondary">View All</a>
-    </div>
-    <div class="card-body p-0">
-      {% if recent_payslips %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Employee</th>
-            <th>Month</th>
-            <th>Net Salary</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in recent_payslips %}
-          <tr>
-            <td>
-              <strong>{{ p.employee.name if p.employee else 'N/A' }}</strong><br />
-              <small class="text-muted">{{ p.employee.employee_number if p.employee else '' }}</small>
-            </td>
-            <td><span class="badge badge-secondary">{{ p.month }}</span></td>
-            <td><strong>GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
-            <td>
-              {% if p.pdf_generated %}
-              <span class="badge badge-success">PDF Ready</span>
-              {% else %}
-              <span class="badge badge-warning">Pending</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if p.pdf_generated %}
-              <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download"><i class="fas fa-download"></i></a>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-state-icon"><i class="fas fa-file-invoice"></i></div>
-        <h4>No Payslips Yet</h4>
-        <p>Upload payroll data to generate payslips.</p>
-        <a href="/upload" class="btn btn-primary">Upload Now</a>
+<div class="row g-4">
+  <!-- Recent Payslips -->
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="fas fa-clock" style="color: var(--accent, #667eea);"></i> Recent Payslips</h4>
+        <a href="/payslips" class="btn btn-sm btn-primary">View All</a>
       </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <div>
-    <div class="card mb-4">
-      <div class="card-header">
-        <h4><i class="fas fa-bell"></i> Recent Activity</h4>
-      </div>
-      <div class="card-body">
-        {% if activities %}
-        <div class="activity-list">
-          {% for act in activities %}
-          <div class="activity-item">
-            <div class="activity-dot {{ act.color or 'blue' }}"></div>
-            <div class="activity-text">
-              <strong>{{ act.title }}</strong><br />
-              {{ act.description }}
-            </div>
-            <div class="activity-time">{{ act.time }}</div>
-          </div>
-          {% endfor %}
+      <div class="card-body p-0">
+        {% if recent_payslips %}
+        <div style="overflow-x: auto;">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th style="border-top: none;">Employee</th>
+                <th style="border-top: none;">Month</th>
+                <th style="border-top: none; text-align: right;">Basic Salary</th>
+                <th style="border-top: none; text-align: right;">Net Salary</th>
+                <th style="border-top: none;">Status</th>
+                <th style="border-top: none; text-align: center;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in recent_payslips %}
+              <tr style="transition: background 0.2s;" onmouseover="this.style.background='#f8f9fe'" onmouseout="this.style.background=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 13px; flex-shrink: 0;">
+                      {{ (p.employee_obj.name[:2] if p.employee_obj else (p.employee_name or '??'))[:2]|upper }}
+                    </div>
+                    <div>
+                      <strong style="font-size: 14px;">{{ p.employee_obj.name if p.employee_obj else (p.employee_name or 'N/A') }}</strong>
+                      {% if p.employee_obj and p.employee_obj.employee_number %}
+                      <br /><small style="color: #64748b;">#{{ p.employee_obj.employee_number }}</small>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+                <td><span class="badge badge-info" style="font-size: 11px;">{{ p.month }}</span></td>
+                <td style="text-align: right; font-weight: 500;">GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</td>
+                <td style="text-align: right;"><strong style="color: #059669;">GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
+                <td>
+                  {% if p.pdf_generated %}
+                  <span class="badge badge-success" style="font-size: 10px;"><i class="fas fa-check-circle"></i> Ready</span>
+                  {% else %}
+                  <span class="badge badge-warning" style="font-size: 10px;"><i class="fas fa-hourglass"></i> Pending</span>
+                  {% endif %}
+                </td>
+                <td style="text-align: center;">
+                  <a href="/payslips/{{ p.id }}/download" class="btn btn-sm btn-ghost" title="Download PDF" target="_blank" style="color: var(--accent, #667eea);"><i class="fas fa-download"></i></a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
         {% else %}
-        <div class="empty-state" style="padding: 20px;">
-          <p style="color: var(--text-muted);">No recent activity</p>
+        <div class="text-center py-5">
+          <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.5;"><i class="fas fa-file-invoice"></i></div>
+          <h5 style="color: #64748b;">No Payslips Yet</h5>
+          <p style="color: #94a3b8;">Upload payroll data to generate payslips.</p>
+          <a href="/upload" class="btn btn-primary"><i class="fas fa-upload"></i> Upload Now</a>
         </div>
         {% endif %}
       </div>
     </div>
+  </div>
 
-    <div class="card">
+  <!-- Right Column -->
+  <div class="col-lg-4">
+    <!-- Quick Actions -->
+    <div class="card mb-4">
       <div class="card-header">
-        <h4><i class="fas fa-info-circle"></i> System Info</h4>
+        <h4 class="mb-0"><i class="fas fa-bolt" style="color: #f59e0b;"></i> Quick Actions</h4>
       </div>
       <div class="card-body">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="color: var(--text-secondary); font-size: 13px;">Total Uploads</span>
+        <div class="d-grid gap-2">
+          <a href="/upload" class="btn btn-primary" style="border-radius: 10px; padding: 10px;"><i class="fas fa-upload"></i> Upload Payslip</a>
+          <a href="/staff" class="btn btn-secondary" style="border-radius: 10px; padding: 10px;"><i class="fas fa-users"></i> Manage Employees</a>
+          <a href="/payslips" class="btn btn-secondary" style="border-radius: 10px; padding: 10px;"><i class="fas fa-file-invoice"></i> View Payslips</a>
+          <a href="/send-payslips" class="btn btn-secondary" style="border-radius: 10px; padding: 10px;"><i class="fas fa-envelope"></i> Send Payslips</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- System Info -->
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0"><i class="fas fa-info-circle" style="color: var(--accent, #667eea);"></i> System Overview</h4>
+      </div>
+      <div class="card-body">
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+          <span style="color: #64748b; font-size: 13px;"><i class="fas fa-upload" style="width: 18px;"></i> Uploads</span>
           <strong style="font-size: 14px;">{{ stats.upload_count or 0 }}</strong>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="color: var(--text-secondary); font-size: 13px;">Payroll Months</span>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+          <span style="color: #64748b; font-size: 13px;"><i class="fas fa-calendar" style="width: 18px;"></i> Active Months</span>
           <strong style="font-size: 14px;">{{ stats.months_active or 0 }}</strong>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-          <span style="color: var(--text-secondary); font-size: 13px;">Avg. Net Salary</span>
-          <strong style="font-size: 14px;">GHS {{ "{:,.2f}".format(stats.avg_net_salary or 0) }}</strong>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+          <span style="color: #64748b; font-size: 13px;"><i class="fas fa-users" style="width: 18px;"></i> Employees</span>
+          <strong style="font-size: 14px;">{{ stats.employee_count or 0 }}</strong>
         </div>
-        <div style="display: flex; justify-content: space-between;">
-          <span style="color: var(--text-secondary); font-size: 13px;">Emails Sent</span>
-          <strong style="font-size: 14px;">{{ stats.email_sent or 0 }}</strong>
+        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+          <span style="color: #64748b; font-size: 13px;"><i class="fas fa-file-pdf" style="width: 18px;"></i> PDFs Generated</span>
+          <strong style="font-size: 14px;">{{ recent_payslips|selectattr('pdf_generated')|list|length if recent_payslips else 0 }}</strong>
         </div>
       </div>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+  var dateEl = document.getElementById('dashboardDate');
+  if (dateEl) {
+    var now = new Date();
+    var options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    dateEl.textContent = now.toLocaleDateString('en-US', options);
+  }
+})();
+</script>
 {% endblock %}

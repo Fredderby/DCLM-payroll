@@ -1,7 +1,7 @@
 from celery import Celery
 from app.core.config import settings
 from app.services.email_service import send_email
-from app.utils.pdf_generator import generate_payslip
+from app.services.pdf_service import generate_payslip_pdf
 import os
 
 celery_app = Celery("payroll", broker=settings.redis_url)

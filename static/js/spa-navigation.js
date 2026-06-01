@@ -91,6 +91,39 @@
     // Replace current content
     contentWrapper.innerHTML = newContent.innerHTML;
 
+    // ─── Update page header (title, subtitle, actions) ───
+    var headerEl = document.querySelector('.top-header');
+    if (headerEl) {
+      var newHeader = temp.querySelector('.top-header');
+      if (newHeader) {
+        var titleEl = headerEl.querySelector('.page-title');
+        var newTitleEl = newHeader.querySelector('.page-title');
+        if (titleEl && newTitleEl) {
+          titleEl.textContent = newTitleEl.textContent;
+        }
+        var parentDiv = headerEl.querySelector('.top-header-left > div');
+        var newParentDiv = newHeader.querySelector('.top-header-left > div');
+        if (parentDiv && newParentDiv) {
+          // Replace subtitle and any extras in the div (keeping title element)
+          var title = parentDiv.querySelector('.page-title');
+          parentDiv.innerHTML = newParentDiv.innerHTML;
+        }
+        var actionsEl = headerEl.querySelector('.top-header-right');
+        var newActionsEl = newHeader.querySelector('.top-header-right');
+        if (actionsEl && newActionsEl) {
+          actionsEl.innerHTML = newActionsEl.innerHTML;
+          // Re-execute scripts in actions area
+          actionsEl.querySelectorAll('script').forEach(function(s) {
+            var ns = document.createElement('script');
+            if (s.src) ns.src = s.src;
+            else ns.textContent = s.textContent;
+            ns.async = false;
+            s.parentNode.replaceChild(ns, s);
+          });
+        }
+      }
+    }
+
     // Re-execute any scripts
     reExecuteScripts(contentWrapper);
 

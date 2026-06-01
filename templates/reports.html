@@ -3,7 +3,7 @@
 {% block title %}Reports - DCLM Payroll{% endblock %}
 
 {% block page_title %}Reports{% endblock %}
-{% block page_subtitle %}Payroll summary, deductions, and analytics{% endblock %}
+{% block page_subtitle %}Generate and view payroll reports{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -13,234 +13,102 @@
 <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
 {% endif %}
 
-<!-- Tabs -->
-<div class="tabs">
-  <button class="tab active" data-tab="summary">Summary Report</button>
-  <button class="tab" data-tab="deductions">Deductions Report</button>
-  <button class="tab" data-tab="departments">Department Report</button>
-  <button class="tab" data-tab="loans">Loans Report</button>
+<!-- Stats Overview -->
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+  <div class="stat-card" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ employees_count or 0 }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Employees</span>
+    </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-users"></i></div>
+  </div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #11998e, #38ef7d); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ months|length if months else 0 }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Payroll Months</span>
+    </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-calendar-alt"></i></div>
+  </div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">GHS {{ total_payroll or 0 }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Payroll</span>
+    </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-coins"></i></div>
+  </div>
+  <div class="stat-card" style="background: linear-gradient(135deg, #4facfe, #00f2fe); color: white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ payslip_count or 0 }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Payslips</span>
+    </div>
+    <div class="stat-icon" style="font-size: 28px; opacity: 0.4;"><i class="fas fa-file-invoice"></i></div>
+  </div>
 </div>
 
-<!-- Tab Content -->
+<div class="row g-4">
+  <!-- Report Generation -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <h4 class="mb-0"><i class="fas fa-file-export" style="color: var(--accent, #667eea);"></i> Generate Report</h4>
+      </div>
+      <div class="card-body">
+        <form action="/reports/generate" method="POST">
+          <div class="mb-3">
+            <label class="form-label" style="font-size: 13px;">Report Type</label>
+            <select name="type" class="form-select" required>
+              <option value="payroll_summary">Payroll Summary</option>
+              <option value="employee_list">Employee List</option>
+              <option value="deductions">Deductions Breakdown</option>
+              <option value="bank_payments">Bank Payments</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" style="font-size: 13px;">Month (optional)</label>
+            <select name="month" class="form-select">
+              <option value="">All Months</option>
+              {% for m in months %}
+              <option value="{{ m }}">{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" style="font-size: 13px;">Format</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="format" value="excel" id="fmtExcel" checked>
+                <label class="form-check-label" for="fmtExcel" style="font-size: 13px;">Excel</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="format" value="csv" id="fmtCsv">
+                <label class="form-check-label" for="fmtCsv" style="font-size: 13px;">CSV</label>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-100"><i class="fas fa-download"></i> Generate & Download</button>
+        </form>
+      </div>
+    </div>
+  </div>
 
-<div class="tab-content active" id="tab-summary">
-  <div class="card">
-    <div class="card-header">
-      <h4><i class="fas fa-chart-pie"></i> Payroll Summary</h4>
-      <div>
-        <select class="form-control" style="width: auto; min-width: 140px; display: inline-block;" id="summaryMonthSelect">
-          <option value="">Latest Month</option>
-          {% for d in monthly_data %}
-          <option value="{{ d.month }}">{{ d.month }}</option>
+  <!-- Quick Stats -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="mb-0"><i class="fas fa-chart-bar" style="color: #f59e0b;"></i> Month Summary</h4>
+        <select id="reportMonthSelect" class="form-select form-select-sm" style="width: auto;">
+          <option value="">Select Month</option>
+          {% for m in months %}
+          <option value="{{ m }}">{{ m }}</option>
           {% endfor %}
         </select>
       </div>
-    </div>
-    <div class="card-body">
-      <div class="stats-grid mb-4">
-        <div class="stat-card">
-          <div class="stat-card-icon blue"><i class="fas fa-users"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number" id="summaryEmployees">{{ stats.total_employees or 0 }}</div>
-            <div class="stat-label">Employees</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon green"><i class="fas fa-money-bill-wave"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number" id="summaryGross">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div>
-            <div class="stat-label">Gross Payroll</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon orange"><i class="fas fa-minus-circle"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number" id="summaryDeductions">GHS 0.00</div>
-            <div class="stat-label">Total Deductions</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon purple"><i class="fas fa-wallet"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number" id="summaryNet">GHS {{ "{:,.2f}".format(stats.total_payroll or 0) }}</div>
-            <div class="stat-label">Net Payroll</div>
-          </div>
+      <div class="card-body" id="monthSummaryContent">
+        <div class="text-center py-4" style="color: #94a3b8;">
+          <i class="fas fa-chart-line" style="font-size: 36px; margin-bottom: 8px; display: block;"></i>
+          Select a month above to view summary
         </div>
       </div>
-
-      <div class="table-container" id="summaryTable">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Basic</th>
-              <th>Allowances</th>
-              <th>Gross</th>
-              <th>PAYE</th>
-              <th>Tithe</th>
-              <th>Deductions</th>
-              <th>Net Salary</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% if monthly_data %}
-            {% for d in monthly_data %}
-            <tr>
-              <td><strong>{{ d.month }}</strong></td>
-              <td>-</td>
-              <td>-</td>
-              <td>GHS {{ "{:,.2f}".format(d.total or 0) }}</td>
-              <td>-</td>
-              <td>-</td>
-              <td>-</td>
-              <td><strong>GHS {{ "{:,.2f}".format(d.total or 0) }}</strong></td>
-            </tr>
-            {% endfor %}
-            {% else %}
-            <tr><td colspan="8"><div class="empty-state"><p style="color: var(--text-muted);">No summary data available. Upload payroll first.</p></div></td></tr>
-            {% endif %}
-          </tbody>
-        </table>
-        {% if not summary_data.details %}
-        <div class="empty-state">
-          <p style="color: var(--text-muted);">No summary data available. Upload payroll first.</p>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="tab-content" id="tab-deductions">
-  <div class="card">
-    <div class="card-header">
-      <h4><i class="fas fa-calculator"></i> Deductions Breakdown</h4>
-    </div>
-    <div class="card-body">
-      {% if stats %}
-      <div class="stats-grid mb-4">
-        <div class="stat-card">
-          <div class="stat-card-icon orange"><i class="fas fa-percentage"></i></div>
-          <div class="stat-card-content">
-        <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Total PAYE Tax</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon purple"><i class="fas fa-church"></i></div>
-          <div class="stat-card-content">
-        <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Total Tithe</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon red"><i class="fas fa-file-invoice"></i></div>
-          <div class="stat-card-content">
-        <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Other Deductions</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon green"><i class="fas fa-hand-holding-heart"></i></div>
-          <div class="stat-card-content">
-        <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Employer Contributions</div>
-          </div>
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-state-icon"><i class="fas fa-calculator"></i></div>
-        <h4>No Deduction Data</h4>
-        <p>Upload payroll to see deduction breakdown.</p>
-      </div>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-<div class="tab-content" id="tab-departments">
-  <div class="card">
-    <div class="card-header">
-      <h4><i class="fas fa-building"></i> Department Breakdown</h4>
-    </div>
-    <div class="card-body">
-      {% if monthly_data %}
-      <div class="table-container">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Department</th>
-              <th>Employees</th>
-              <th>Total Gross</th>
-              <th>Total Net</th>
-              <th>Avg Salary</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for dept in monthly_data %}
-            <tr>
-              <td><strong>{{ dept.month }}</strong></td>
-              <td><span class="badge badge-info">{{ dept.count }}</span></td>
-              <td>GHS {{ "{:,.2f}".format(dept.total or 0) }}</td>
-              <td><strong>GHS {{ "{:,.2f}".format(dept.total or 0) }}</strong></td>
-              <td>GHS 0.00</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <p style="color: var(--text-muted);">No department data available.</p>
-      </div>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-<div class="tab-content" id="tab-loans">
-  <div class="card">
-    <div class="card-header">
-      <h4><i class="fas fa-hand-holding-usd"></i> Loans Report</h4>
-    </div>
-    <div class="card-body">
-      {% if stats %}
-      <div class="stats-grid mb-4">
-        <div class="stat-card">
-          <div class="stat-card-icon blue"><i class="fas fa-hand-holding-usd"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Total Loaned</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon green"><i class="fas fa-check-circle"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Total Repaid</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon red"><i class="fas fa-balance-scale"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number">GHS 0.00</div>
-            <div class="stat-label">Outstanding</div>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-icon orange"><i class="fas fa-users"></i></div>
-          <div class="stat-card-content">
-            <div class="stat-number">0</div>
-            <div class="stat-label">Active Borrowers</div>
-          </div>
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <p style="color: var(--text-muted);">No loan data available.</p>
-      </div>
-      {% endif %}
     </div>
   </div>
 </div>
@@ -248,30 +116,31 @@
 
 {% block extra_scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  // Tab switching
-  var tabs = document.querySelectorAll('.tab');
-  tabs.forEach(function(tab) {
-    tab.addEventListener('click', function() {
-      var tabId = this.getAttribute('data-tab');
-      tabs.forEach(function(t) { t.classList.remove('active'); });
-      this.classList.add('active');
-      document.querySelectorAll('.tab-content').forEach(function(tc) { tc.classList.remove('active'); });
-      var target = document.getElementById('tab-' + tabId);
-      if (target) target.classList.add('active');
-    });
-  });
+(function() {
+  var monthSelect = document.getElementById('reportMonthSelect');
+  var summaryContent = document.getElementById('monthSummaryContent');
+  if (!monthSelect || !summaryContent) return;
 
-  // Summary month filter
-  var summarySelect = document.getElementById('summaryMonthSelect');
-  if (summarySelect) {
-    summarySelect.addEventListener('change', function() {
-      var month = this.value;
-      if (month) {
-        window.location.href = '/reports?month=' + encodeURIComponent(month);
-      }
-    });
-  }
-});
+  monthSelect.onchange = function() {
+    var m = this.value;
+    if (!m) {
+      summaryContent.innerHTML = '<div class="text-center py-4" style="color:#94a3b8;"><i class="fas fa-chart-line" style="font-size:36px;margin-bottom:8px;display:block;"></i>Select a month above to view summary</div>';
+      return;
+    }
+    summaryContent.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"><span class="visually-hidden">Loading...</span></div></div>';
+    fetch('/reports/month-summary?month=' + encodeURIComponent(m), {credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(data){
+        var h = '<div class="row g-3">';
+        h += '<div class="col-6"><div class="p-3" style="background:#f8f9fe;border-radius:10px;"><div style="font-size:11px;color:#64748b;">Payslips</div><div style="font-size:22px;font-weight:700;color:#1e293b;">' + (data.count || 0) + '</div></div></div>';
+        h += '<div class="col-6"><div class="p-3" style="background:#ecfdf5;border-radius:10px;"><div style="font-size:11px;color:#64748b;">Net Payroll</div><div style="font-size:22px;font-weight:700;color:#059669;">GHS ' + Number(data.total_net||0).toLocaleString(undefined,{minimumFractionDigits:2}) + '</div></div></div>';
+        h += '<div class="col-6"><div class="p-3" style="background:#fef2f2;border-radius:10px;"><div style="font-size:11px;color:#64748b;">Deductions</div><div style="font-size:22px;font-weight:700;color:#dc2626;">GHS ' + Number(data.total_deductions||0).toLocaleString(undefined,{minimumFractionDigits:2}) + '</div></div></div>';
+        h += '<div class="col-6"><div class="p-3" style="background:#fff7ed;border-radius:10px;"><div style="font-size:11px;color:#64748b;">Avg Net Salary</div><div style="font-size:22px;font-weight:700;color:#d97706;">GHS ' + Number(data.avg_net||0).toLocaleString(undefined,{minimumFractionDigits:2}) + '</div></div></div>';
+        h += '</div>';
+        summaryContent.innerHTML = h;
+      })
+      .catch(function(err){summaryContent.innerHTML='<div class="alert alert-danger text-center py-3"><i class="fas fa-exclamation-triangle"></i> '+err.message+'</div>';});
+  };
+})();
 </script>
 {% endblock %}

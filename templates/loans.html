@@ -3,7 +3,12 @@
 {% block title %}Loan Management - DCLM Payroll{% endblock %}
 
 {% block page_title %}Loan Management{% endblock %}
-{% block page_subtitle %}Register and manage employee loan requests{% endblock %}
+{% block page_subtitle %}Manage employee loan records and repayments{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary btn-sm" id="addLoanBtn"><i class="fas fa-plus"></i> Add Loan</button>
+<button class="btn btn-secondary btn-sm" id="bulkLoanBtn"><i class="fas fa-users"></i> Bulk Register</button>
+{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -13,172 +18,531 @@
 <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
 {% endif %}
 
-<div class="row g-4">
-  <!-- LEFT COLUMN: Registration Form -->
-  <div class="col-lg-5">
-    <div class="card">
-      <div class="card-header">
-        <h5><i class="fas fa-hand-holding-usd me-2"></i>Register New Loan</h5>
+<!-- Stats Cards -->
+<div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+  <div class="stat-card" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ loans|length }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Loans</span>
+    </div>
+    <div class="stat-icon" style="font-size:28px;opacity:0.4;"><i class="fas fa-hand-holding-usd"></i></div>
+  </div>
+  <div class="stat-card" style="background:linear-gradient(135deg,#11998e,#38ef7d);color:white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">GHS {{ "{:,.2f}".format(loans|sum(attribute='loan_amount')) }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Total Amount</span>
+    </div>
+    <div class="stat-icon" style="font-size:28px;opacity:0.4;"><i class="fas fa-coins"></i></div>
+  </div>
+  <div class="stat-card" style="background:linear-gradient(135deg,#f093fb,#f5576c);color:white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">GHS {{ "{:,.2f}".format(loans|selectattr('status','equalto','Active')|sum(attribute='balance')) }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Outstanding</span>
+    </div>
+    <div class="stat-icon" style="font-size:28px;opacity:0.4;"><i class="fas fa-chart-line"></i></div>
+  </div>
+  <div class="stat-card" style="background:linear-gradient(135deg,#4facfe,#00f2fe);color:white;">
+    <div class="stat-info">
+      <span class="stat-value" style="color:white;">{{ loans|selectattr('status','equalto','Active')|list|length }}</span>
+      <span class="stat-label" style="color:rgba(255,255,255,0.8);">Active Loans</span>
+    </div>
+    <div class="stat-icon" style="font-size:28px;opacity:0.4;"><i class="fas fa-clock"></i></div>
+  </div>
+</div>
+
+<!-- Search & View Toggle -->
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3" id="loansToolbar">
+  <div class="input-group input-group-sm" style="max-width:300px;">
+    <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+    <input type="text" id="loanSearch" class="form-control border-start-0" placeholder="Search employee name..." />
+  </div>
+  <select id="loanStatusFilter" class="form-select form-select-sm" style="width:auto;">
+    <option value="">All Statuses</option>
+    <option value="Active">Active</option>
+    <option value="Completed">Completed</option>
+    <option value="Defaulted">Defaulted</option>
+  </select>
+  <span style="flex:1;"></span>
+  <div class="btn-group btn-group-sm">
+    <button class="btn btn-ghost active" id="cardViewBtnLoan"><i class="fas fa-th-large"></i> Cards</button>
+    <button class="btn btn-ghost" id="tableViewBtnLoan"><i class="fas fa-list"></i> Table</button>
+  </div>
+</div>
+
+<!-- Cards View -->
+<div id="loanCardsView" class="row g-3">
+  {% for loan in loans %}
+  <div class="col-lg-4 col-md-6 col-12 loan-item" data-name="{{ loan.employee_name|lower }}" data-status="{{ loan.status or 'Active' }}">
+    <div class="loan-card">
+      <div class="loan-card-banner {% if loan.status == 'Active' %}banner-active{% elif loan.status == 'Completed' %}banner-completed{% else %}banner-defaulted{% endif %}">
+        {% if loan.status == 'Completed' %}<i class="fas fa-check-circle"></i> Paid Off{% elif loan.status == 'Defaulted' %}<i class="fas fa-exclamation-triangle"></i> Defaulted{% else %}<i class="fas fa-hourglass-half"></i> Repaying{% endif %}
       </div>
-      <div class="card-body">
-        <form method="POST" action="/loans/add" onsubmit="return validateLoanForm()">
-          <div class="row g-2">
-            <div class="col-6">
-              <label class="form-label" style="font-size:12px;">Employee Name <span class="text-danger">*</span></label>
-              <input type="text" name="employee_name" id="l_empname" class="form-control form-control-sm" list="loanEmpList" required placeholder="John Doe" autocomplete="off" />
-              <datalist id="loanEmpList">
-                {% for e in employees_list %}<option value="{{ e.name }}">{% endfor %}
-              </datalist>
-            </div>
-            <div class="col-6">
-              <label class="form-label" style="font-size:12px;">Bank Name</label>
-              <input type="text" name="bank_name" class="form-control form-control-sm" placeholder="GCB Bank" />
-            </div>
-            <div class="col-4">
-              <label class="form-label" style="font-size:12px;">Loan Amount (GHS) <span class="text-danger">*</span></label>
-              <input type="number" step="0.01" name="loan_amount" id="l_amount" class="form-control form-control-sm" required placeholder="1000.00" />
-            </div>
-            <div class="col-4">
-              <label class="form-label" style="font-size:12px;">Interest (GHS)</label>
-              <input type="number" step="0.01" name="interest_amount" id="l_interest" class="form-control form-control-sm" value="0" placeholder="0.00" />
-            </div>
-            <div class="col-4">
-              <label class="form-label" style="font-size:12px;">Months to Pay <span class="text-danger">*</span></label>
-              <input type="number" min="1" name="months_to_pay" id="l_months" class="form-control form-control-sm" required placeholder="12" />
-            </div>
-            <div class="col-12">
-              <label class="form-label" style="font-size:12px;">Notes</label>
-              <textarea name="notes" class="form-control form-control-sm" rows="2" placeholder="Optional notes..."></textarea>
-            </div>
+      <div class="loan-card-header">
+        <div class="loan-avatar" style="background:{% if loan.status == 'Completed' %}linear-gradient(135deg,#059669,#38ef7d){% elif loan.status == 'Defaulted' %}linear-gradient(135deg,#dc2626,#f87171){% else %}linear-gradient(135deg,#667eea,#764ba2){% endif %}">{{ loan.employee_name[:2]|upper if loan.employee_name else '??' }}</div>
+        <div class="loan-card-info">
+          <div class="loan-card-name">{{ loan.employee_name }}</div>
+          <div class="loan-card-sub">{{ loan.bank_name or 'N/A' }} · #{{ loan.id }}</div>
+        </div>
+        <span class="badge" style="background:{% if loan.status == 'Completed' %}#059669{% elif loan.status == 'Defaulted' %}#dc2626{% else %}#d97706{% endif %};color:white;">{{ loan.status or 'Active' }}</span>
+      </div>
+      <div class="loan-card-body">
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:4px;">
+            <span>Repayment Progress</span>
+            <span>{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }} months</span>
           </div>
-          <button type="submit" class="btn btn-primary w-100 mt-3"><i class="fas fa-save me-1"></i> Register Loan</button>
-        </form>
+          <div class="progress" style="height:6px;background:#e2e8f0;border-radius:3px;">
+            {% set pct = ((loan.months_paid or 0) / (loan.months_to_pay or 1) * 100) | round %}
+            <div class="progress-bar" style="width:{{ pct if pct <= 100 else 100 }}%;background:{% if pct >= 100 %}linear-gradient(135deg,#059669,#38ef7d){% elif pct >= 50 %}linear-gradient(135deg,#d97706,#f59e0b){% else %}linear-gradient(135deg,#667eea,#764ba2){% endif %};border-radius:3px;"></div>
+          </div>
+        </div>
+        <div class="loan-fin-grid">
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Loan Amount</span>
+            <span class="loan-fin-value">GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</span>
+          </div>
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Interest</span>
+            <span class="loan-fin-value">GHS {{ "{:,.2f}".format(loan.interest_amount or 0) }}</span>
+          </div>
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Total Receivable</span>
+            <span class="loan-fin-value">GHS {{ "{:,.2f}".format(loan.total_receivable or 0) }}</span>
+          </div>
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Monthly Deduction</span>
+            <span class="loan-fin-value">GHS {{ "{:,.2f}".format(loan.monthly_deduction or 0) }}</span>
+          </div>
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Amount Paid</span>
+            <span class="loan-fin-value" style="color:#059669;">GHS {{ "{:,.2f}".format(loan.amount_paid or 0) }}</span>
+          </div>
+          <div class="loan-fin-item">
+            <span class="loan-fin-label">Balance</span>
+            <span class="loan-fin-value" style="color:#dc2626;">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="loan-card-footer">
+        <button class="btn btn-sm loan-pay-btn" data-id="{{ loan.id }}" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-circle" style="color:#059669;"></i> Pay</button>
+        <button class="btn btn-sm loan-complete-btn" data-id="{{ loan.id }}" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-double" style="color:#667eea;"></i> Complete</button>
       </div>
     </div>
   </div>
+  {% endfor %}
+</div>
 
-  <!-- RIGHT COLUMN: Summary Cards + Table -->
-  <div class="col-lg-7">
-    <!-- Summary Cards -->
-    <div class="row g-2 mb-3">
-      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5">{{ stats.total_loaned or 0 }}</div><small class="text-muted" style="font-size:11px;">Total Loaned</small></div></div>
-      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5">{{ stats.active_count or 0 }}</div><small class="text-muted" style="font-size:11px;">Active</small></div></div>
-      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5 text-success">{{ stats.completed_count or 0 }}</div><small class="text-muted" style="font-size:11px;">Completed</small></div></div>
-      <div class="col-3"><div class="card py-2 px-2 text-center"><div class="fw-bold fs-5 text-danger">GHS {{ "{:,.0f}".format(stats.total_outstanding or 0) }}</div><small class="text-muted" style="font-size:11px;">Outstanding</small></div></div>
-    </div>
-
-    <!-- Loans Table -->
-    <div class="card">
-      <div class="card-header py-2 d-flex justify-content-between align-items-center">
-        <h6 class="mb-0"><i class="fas fa-list me-1"></i> Loan Records</h6>
-        <span class="badge bg-info">{{ loans|length }} Loans</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0" id="loanTable">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Amount</th>
-              <th>Balance</th>
-              <th>Monthly</th>
-              <th>Status</th>
-              <th style="width:100px;">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for loan in loans %}
-            <tr>
-              <td><strong>{{ loan.employee_name }}</strong>{% if loan.bank_name %}<br /><small class="text-muted">{{ loan.bank_name }}</small>{% endif %}</td>
-              <td>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</td>
-              <td><strong style="color:{% if loan.balance > 0 %}var(--danger){% else %}var(--success){% endif %};">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</strong></td>
-              <td>GHS {{ "{:,.2f}".format(loan.monthly_deduction or 0) }}<br /><small class="text-muted">{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }}mo</small></td>
-              <td>
-                {% if loan.status == "Active" %}<span class="badge bg-warning text-dark">Active</span>
-                {% elif loan.status == "Completed" %}<span class="badge bg-success">Completed</span>
-                {% else %}<span class="badge bg-secondary">{{ loan.status }}</span>{% endif %}
-              </td>
-              <td>
-                <div class="btn-group btn-group-sm">
-                  {% if loan.status == "Active" %}
-                  <form method="POST" action="/loans/{{ loan.id }}/pay" style="display:inline;">
-                    <button class="btn btn-outline-success" title="Record Payment"><i class="fas fa-check"></i></button>
-                  </form>
-                  {% endif %}
-                  <form method="POST" action="/loans/{{ loan.id }}/delete" style="display:inline;" onsubmit="return confirm('Delete this loan record?')">
-                    <button class="btn btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% if not loans %}
-        <div class="text-center py-4 text-muted">
-          <i class="fas fa-hand-holding-usd fa-2x mb-2"></i><br />No loans recorded yet. Use the form on the left to register a loan.
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-    <!-- Loan Profile Cards -->
-    {% if loans %}
-    <div class="mt-3">
-      <h6 class="mb-2"><i class="fas fa-id-card me-1"></i> Loan Overview</h6>
-      <div class="row g-2">
+<!-- Table View -->
+<div id="loanTableView" style="display:none;">
+  <div class="table-container">
+    <table class="table" id="loanTable">
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Bank</th>
+          <th>Amount</th>
+          <th>Paid</th>
+          <th>Balance</th>
+          <th>Progress</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
         {% for loan in loans %}
-        <div class="col-md-6">
-          <div class="card h-100">
-            <div class="card-body p-3">
-              <div class="d-flex justify-content-between align-items-start mb-2">
-                <div>
-                  <div class="fw-bold">{{ loan.employee_name }}</div>
-                  {% if loan.bank_name %}<small class="text-muted">{{ loan.bank_name }}</small>{% endif %}
-                </div>
-                {% if loan.status == "Active" %}<span class="badge bg-warning text-dark">Active</span>
-                {% elif loan.status == "Completed" %}<span class="badge bg-success">Completed</span>
-                {% else %}<span class="badge bg-secondary">{{ loan.status }}</span>{% endif %}
+        <tr class="loan-item" data-name="{{ loan.employee_name|lower }}" data-status="{{ loan.status or 'Active' }}">
+          <td><strong>{{ loan.employee_name }}</strong></td>
+          <td>{{ loan.bank_name or 'N/A' }}</td>
+          <td>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</td>
+          <td style="color:#059669;">GHS {{ "{:,.2f}".format(loan.amount_paid or 0) }}</td>
+          <td style="color:#dc2626;">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</td>
+          <td>
+            {% set pct = ((loan.months_paid or 0) / (loan.months_to_pay or 1) * 100) | round %}
+            <div class="progress" style="height:4px;width:80px;background:#e2e8f0;border-radius:2px;">
+              <div class="progress-bar" style="width:{{ pct if pct <= 100 else 100 }}%;background:{% if pct >= 100 %}#059669{% elif pct >= 50 %}#d97706{% else %}#667eea{% endif %};border-radius:2px;"></div>
+            </div>
+            <small style="font-size:10px;color:#64748b;">{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }}</small>
+          </td>
+          <td><span class="badge" style="background:{% if loan.status == 'Completed' %}#059669{% elif loan.status == 'Defaulted' %}#dc2626{% else %}#d97706{% endif %};color:white;">{{ loan.status or 'Active' }}</span></td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-ghost loan-pay-btn" data-id="{{ loan.id }}" title="Pay" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-circle" style="color:#059669;"></i></button>
+              <button class="btn btn-ghost loan-complete-btn" data-id="{{ loan.id }}" title="Complete" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-double" style="color:#667eea;"></i></button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if not loans %}
+<div class="text-center py-5">
+  <div style="font-size:48px;margin-bottom:12px;">🏦</div>
+  <h4>No Loans Found</h4>
+  <p>Register a new loan to get started.</p>
+  <button class="btn btn-primary" id="addLoanBtn2"><i class="fas fa-plus"></i> Add Loan</button>
+</div>
+{% endif %}
+
+<!-- Add Loan Modal (Individual with Employee Select) -->
+<div class="modal fade" id="loanModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="loanModalTitle"><i class="fas fa-hand-holding-usd"></i> Register Loan</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="/loans/add" method="POST" id="loanForm">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6" style="position:relative;">
+              <label class="form-label" style="font-size:13px;">Employee Name <span class="text-danger">*</span></label>
+              <input type="hidden" name="employee_name" id="loanEmployeeNameHidden" value="" />
+              <div class="position-relative">
+                <input type="text" id="loanEmployeeSearch" class="form-control" placeholder="Start typing employee name..." autocomplete="off" />
+                <div id="employeeSuggestions" class="list-group" style="display:none;position:absolute;z-index:1000;width:100%;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.1);border-radius:0 0 8px 8px;"></div>
               </div>
-              <div class="d-flex justify-content-between" style="font-size:13px;">
-                <span class="text-muted">Amount:</span>
-                <strong>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</strong>
+              <div id="selectedEmployeeDisplay" style="display:none;margin-top:4px;">
+                <span class="badge badge-info" style="font-size:12px;padding:4px 10px;">
+                  <span id="selectedEmployeeName"></span>
+                  <button type="button" class="btn-close btn-close-white" id="clearEmployeeSelection" style="font-size:8px;margin-left:6px;" aria-label="Clear"></button>
+                </span>
               </div>
-              <div class="d-flex justify-content-between" style="font-size:13px;">
-                <span class="text-muted">Due:</span>
-                <strong>GHS {{ "{:,.2f}".format(loan.total_receivable or 0) }}</strong>
-              </div>
-              <div class="d-flex justify-content-between" style="font-size:13px;">
-                <span class="text-muted">Balance:</span>
-                <strong style="color:{% if loan.balance > 0 %}var(--danger){% else %}var(--success){% endif %};">GHS {{ "{:,.2f}".format(loan.balance or 0) }}</strong>
-              </div>
-              <div class="mt-2">
-                <div class="progress" style="height:6px;">
-                  {% set pct = (loan.amount_paid / loan.total_receivable * 100) if loan.total_receivable > 0 else 0 %}
-                  <div class="progress-bar bg-{{ 'success' if pct >= 100 else 'primary' }}" style="width:{{ pct|round }}%;"></div>
-                </div>
-                <small class="text-muted">{{ loan.months_paid or 0 }}/{{ loan.months_to_pay or 1 }} months paid</small>
-              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" style="font-size:13px;">Bank Name</label>
+              <input type="text" name="bank_name" class="form-control" placeholder="GCB Bank" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Loan Amount (GHS) <span class="text-danger">*</span></label>
+              <input type="number" step="0.01" name="loan_amount" id="loanAmount" class="form-control" required value="0" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Months to Pay</label>
+              <input type="number" name="months_to_pay" id="monthsToPay" class="form-control" value="12" min="1" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Interest (GHS)</label>
+              <input type="number" step="0.01" name="interest_amount" id="interestAmount" class="form-control" value="0" />
+            </div>
+          </div>
+          <div class="row g-3 mt-2">
+            <div class="col-md-4"><label style="font-size:13px;">Total Receivable</label><input type="text" id="totalReceivable" class="form-control" readonly /></div>
+            <div class="col-md-4"><label style="font-size:13px;">Monthly Deduction</label><input type="text" id="monthlyDeduction" class="form-control" readonly /></div>
+            <div class="col-md-4"><label style="font-size:13px;">Notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Optional..."></textarea></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Loan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Loan Modal (Multi-Select with Individual Amounts) -->
+<div class="modal fade" id="bulkLoanModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users" style="color:#667eea;"></i> Bulk Register Loans</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="/loans/bulk-add" method="POST" id="bulkLoanForm">
+        <div class="modal-body">
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Global Bank Name</label>
+              <input type="text" id="bulkBankName" class="form-control" placeholder="GCB Bank" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Global Months</label>
+              <input type="number" id="bulkMonths" class="form-control" value="12" min="1" />
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" style="font-size:13px;">Global Interest (GHS)</label>
+              <input type="number" step="0.01" id="bulkInterest" class="form-control" value="0" />
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="form-label" style="font-size:13px;margin:0;">Select Employees & Set Individual Amounts</label>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" id="selectAllEmployees" />
+              <label class="form-check-label" style="font-size:12px;" for="selectAllEmployees">Select All</label>
+            </div>
+          </div>
+          <div style="max-height:280px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;">
+            <table class="table" style="margin:0;font-size:13px;">
+              <thead>
+                <tr style="background:#f8f9fa;position:sticky;top:0;">
+                  <th style="width:30px;border-top:none;padding:6px 8px;"></th>
+                  <th style="border-top:none;padding:6px 8px;">Employee</th>
+                  <th style="border-top:none;padding:6px 8px;width:140px;">Loan Amount (GHS)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for emp in all_employees %}
+                <tr>
+                  <td style="padding:4px 8px;"><input class="form-check-input bulk-emp-check" type="checkbox" name="employee_names" value="{{ emp.name }}" id="bulkEmp{{ emp.id }}" /></td>
+                  <td style="padding:4px 8px;"><label for="bulkEmp{{ emp.id }}" style="cursor:pointer;">{{ emp.name }}</label></td>
+                  <td style="padding:4px 8px;"><input type="number" step="0.01" class="form-control form-control-sm bulk-amount" name="loan_amounts" placeholder="Amount" min="0" /></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-2 text-end">
+            <small style="color:#64748b;">Selected: <span id="bulkSelectedCount">0</span> employees</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="bulkSubmitBtn"><i class="fas fa-save"></i> Register Selected Loans</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-check-circle" style="color:#059669;"></i> Record Payment</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="/loans/pay" method="POST" id="paymentForm">
+        <input type="hidden" name="loan_id" id="paymentLoanId" value="" />
+        <div class="modal-body text-center">
+          <div style="font-size:48px;margin-bottom:12px;"><i class="fas fa-check-circle" style="color:#059669;"></i></div>
+          <h5>Confirm Monthly Payment</h5>
+          <p style="color:#64748b;" id="paymentInfoText">Record one month payment for this loan?</p>
+          <div class="d-flex justify-content-center gap-3 mt-3">
+            <div style="text-align:center;">
+              <div style="font-size:11px;color:#64748b;">Each Payment</div>
+              <div style="font-size:20px;font-weight:700;color:#059669;" id="paymentAmountDisplay">GHS 0.00</div>
             </div>
           </div>
         </div>
-        {% endfor %}
-      </div>
+        <div class="modal-footer justify-content-center">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Confirm Payment</button>
+        </div>
+      </form>
     </div>
-    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
+<style>
+.loan-card{background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;transition:all 0.25s ease;box-shadow:0 2px 8px rgba(0,0,0,0.04);height:100%;display:flex;flex-direction:column}
+.loan-card:hover{box-shadow:0 12px 32px rgba(0,0,0,0.08);transform:translateY(-3px);border-color:#667eea}
+.loan-card-banner{text-align:center;padding:4px 0;font-size:11px;font-weight:600;letter-spacing:0.3px}
+.banner-active{background:linear-gradient(135deg,#fef3c7,#fde68a);color:#92400e}
+.banner-completed{background:linear-gradient(135deg,#d1fae5,#a7f3d0);color:#065f46}
+.banner-defaulted{background:linear-gradient(135deg,#fee2e2,#fca5a5);color:#991b1b}
+.loan-card-header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f8f9fe;border-bottom:1px solid #e2e8f0}
+.loan-avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;flex-shrink:0}
+.loan-card-info{flex:1;min-width:0}
+.loan-card-name{font-size:14px;font-weight:600;color:#1e293b}
+.loan-card-sub{font-size:10px;color:#64748b}
+.loan-card-body{padding:12px 16px;flex:1}
+.loan-fin-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.loan-fin-item{display:flex;flex-direction:column;padding:4px 0;border-bottom:1px dashed #f1f5f9}
+.loan-fin-item:nth-last-child(-n+2){border-bottom:none}
+.loan-fin-label{font-size:10px;color:#64748b}
+.loan-fin-value{font-size:13px;font-weight:600;color:#1e293b}
+.loan-card-footer{display:flex;gap:8px;padding:10px 16px;border-top:1px solid #e2e8f0;background:#fafbfc}
+.loan-card-footer .btn{flex:1;font-size:12px;padding:4px 8px}
+#employeeSuggestions .list-group-item{cursor:pointer;font-size:13px;padding:6px 12px}
+#employeeSuggestions .list-group-item:hover{background:#eef1ff}
+.form-check-input:checked{background-color:#667eea;border-color:#667eea}
+</style>
+
 <script>
-function validateLoanForm(){
-  var name = document.getElementById('l_empname');
-  var amt = document.getElementById('l_amount');
-  var months = document.getElementById('l_months');
-  if(!name.value.trim()){ alert('Employee name is required.'); name.focus(); return false; }
-  if(!amt.value || parseFloat(amt.value) <= 0){ alert('Loan amount must be greater than 0.'); amt.focus(); return false; }
-  if(!months.value || parseInt(months.value) < 1){ alert('Months to pay must be at least 1.'); months.focus(); return false; }
-  return true;
-}
+(function() {
+  // ─── Employee Names Cache ───
+  var employeeNames = [];
+  (function fetchNames() {
+    fetch('/api/employee-names', {credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(data){employeeNames = data.names || [];})
+      .catch(function(){});
+  })();
+
+  // ─── INDIVIDUAL LOAN: Employee Search + Select ───
+  var searchInput = document.getElementById('loanEmployeeSearch');
+  var suggestions = document.getElementById('employeeSuggestions');
+  var hiddenInput = document.getElementById('loanEmployeeNameHidden');
+  var selectedDisplay = document.getElementById('selectedEmployeeDisplay');
+  var selectedNameSpan = document.getElementById('selectedEmployeeName');
+  var clearBtn = document.getElementById('clearEmployeeSelection');
+  var selectedEmployee = '';
+
+  if (searchInput) {
+    searchInput.oninput = function() {
+      var val = this.value.toLowerCase().trim();
+      if (selectedEmployee) { selectedEmployee = ''; hiddenInput.value = ''; selectedDisplay.style.display = 'none'; }
+      if (!val || val.length < 1) { suggestions.style.display = 'none'; return; }
+      var matches = employeeNames.filter(function(n){return n.toLowerCase().indexOf(val) !== -1;}).slice(0, 10);
+      if (matches.length === 0) { suggestions.innerHTML = '<div class="list-group-item text-muted" style="font-size:12px;">No matching employees</div>'; suggestions.style.display = ''; return; }
+      suggestions.innerHTML = matches.map(function(n){return '<a href="#" class="list-group-item list-group-item-action" data-name="'+n.replace(/"/g,'&quot;')+'">'+n+'</a>';}).join('');
+      suggestions.style.display = '';
+    };
+  }
+
+  document.addEventListener('click', function(e) {
+    var item = e.target.closest('#employeeSuggestions .list-group-item');
+    if (item && item.getAttribute('data-name')) {
+      e.preventDefault();
+      selectedEmployee = item.getAttribute('data-name');
+      hiddenInput.value = selectedEmployee;
+      searchInput.value = selectedEmployee;
+      suggestions.style.display = 'none';
+      selectedNameSpan.textContent = selectedEmployee;
+      selectedDisplay.style.display = '';
+    }
+  });
+
+  if (clearBtn) {
+    clearBtn.onclick = function() {
+      selectedEmployee = '';
+      hiddenInput.value = '';
+      searchInput.value = '';
+      selectedDisplay.style.display = 'none';
+      searchInput.focus();
+    };
+  }
+
+  // ─── AUTO-CALCULATE ───
+  var loanAmt=document.getElementById('loanAmount'), monInp=document.getElementById('monthsToPay'), intInp=document.getElementById('interestAmount'), totRecv=document.getElementById('totalReceivable'), monDed=document.getElementById('monthlyDeduction');
+  function calc(){var a=parseFloat(loanAmt?.value||0),i=parseFloat(intInp?.value||0),m=parseInt(monInp?.value)||1,t=a+i;if(totRecv)totRecv.value='GHS '+t.toFixed(2);if(monDed)monDed.value=m>0?'GHS '+(t/m).toFixed(2):'GHS 0.00';}
+  if(loanAmt)loanAmt.oninput=calc;if(monInp)monInp.oninput=calc;if(intInp)intInp.oninput=calc;setTimeout(calc,100);
+
+  // ─── BULK: Select All + Update Count ───
+  var selectAll = document.getElementById('selectAllEmployees');
+  if (selectAll) {
+    selectAll.onchange = function() {
+      var checked = this.checked;
+      document.querySelectorAll('.bulk-emp-check').forEach(function(cb){cb.checked = checked;});
+      updateBulkCount();
+    };
+    document.addEventListener('change', function(e) {
+      if (e.target.closest('.bulk-emp-check')) updateBulkCount();
+    });
+  }
+  function updateBulkCount() {
+    var count = document.querySelectorAll('.bulk-emp-check:checked').length;
+    var el = document.getElementById('bulkSelectedCount');
+    if (el) el.textContent = count;
+  }
+
+  // ─── BULK: Submit handler - attaches global fields to each row ───
+  var bulkForm = document.getElementById('bulkLoanForm');
+  if (bulkForm) {
+    bulkForm.onsubmit = function(e) {
+      e.preventDefault();
+      var checkedEmps = document.querySelectorAll('.bulk-emp-check:checked');
+      if (checkedEmps.length === 0) { alert('Please select at least one employee.'); return; }
+      var formData = new FormData();
+      var bankName = document.getElementById('bulkBankName')?.value || '';
+      var months = parseInt(document.getElementById('bulkMonths')?.value) || 12;
+      var interest = parseFloat(document.getElementById('bulkInterest')?.value) || 0;
+      var validCount = 0;
+      checkedEmps.forEach(function(cb) {
+        var row = cb.closest('tr');
+        var amountInput = row ? row.querySelector('.bulk-amount') : null;
+        var amount = amountInput ? parseFloat(amountInput.value) : 0;
+        if (isNaN(amount) || amount <= 0) return;
+        formData.append('employee_names', cb.value);
+        formData.append('loan_amounts', amount.toString());
+        validCount++;
+      });
+      if (validCount === 0) { alert('Please enter valid loan amounts for selected employees.'); return; }
+      formData.append('bank_name', bankName);
+      formData.append('months_to_pay', months.toString());
+      formData.append('interest_amount', interest.toString());
+      // Submit via POST
+      fetch('/loans/bulk-add', {method:'POST', body:formData, credentials:'same-origin'})
+        .then(function(r){window.location.href = r.url;})
+        .catch(function(){alert('Submission failed. Please try again.');});
+    };
+  }
+
+  // ─── PAYMENT MODAL ───
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.loan-pay-btn');
+    if (btn && !btn.disabled) {
+      e.preventDefault();
+      var id = btn.getAttribute('data-id');
+      var card = btn.closest('.loan-card, tr');
+      if (card) {
+        var deductionEl = card.querySelector('.loan-fin-item:nth-child(4) .loan-fin-value') || card.querySelector('td:nth-child(3)');
+        var deductionText = '0';
+        if (deductionEl) {
+          var match = deductionEl.textContent.match(/[\d,]+\.\d+/);
+          if (match) deductionText = match[0].replace(/,/g,'');
+        }
+        document.getElementById('paymentLoanId').value = id;
+        document.getElementById('paymentAmountDisplay').textContent = 'GHS '+parseFloat(deductionText).toFixed(2);
+        var nameEl = card.querySelector('.loan-card-name, td:first-child strong');
+        document.getElementById('paymentInfoText').textContent = 'Record one month payment for '+(nameEl?nameEl.textContent:'this loan')+'?';
+        new bootstrap.Modal(document.getElementById('paymentModal')).show();
+      }
+    }
+  });
+
+  // ─── COMPLETE LOAN ───
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.loan-complete-btn');
+    if (btn && !btn.disabled) { e.preventDefault(); if(confirm('Mark this loan as completed?')){var f=document.createElement('form');f.method='POST';f.action='/loans/complete/'+btn.getAttribute('data-id');f.style.display='none';document.body.appendChild(f);f.submit();}}
+  });
+
+  // ─── ADD LOAN BUTTON ───
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#addLoanBtn, #addLoanBtn2');
+    if (btn) { e.preventDefault(); document.getElementById('loanModalTitle').textContent='Register Loan';document.getElementById('loanForm').action='/loans/add';document.getElementById('loanForm').reset();selectedEmployee='';hiddenInput.value='';selectedDisplay.style.display='none';setTimeout(calc,100);new bootstrap.Modal(document.getElementById('loanModal')).show(); }
+  });
+
+  // ─── BULK BUTTON ───
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#bulkLoanBtn');
+    if (btn) { e.preventDefault(); updateBulkCount(); new bootstrap.Modal(document.getElementById('bulkLoanModal')).show(); }
+  });
+
+  // ─── SEARCH & FILTER ───
+  var toolbar = document.getElementById('loansToolbar');
+  function doFilter() {
+    var q=(document.getElementById('loanSearch')?.value||'').toLowerCase().trim();
+    var s=document.getElementById('loanStatusFilter')?.value||'';
+    document.querySelectorAll('.loan-item').forEach(function(el){
+      var n=(el.getAttribute('data-name')||'').toLowerCase(),st=el.getAttribute('data-status')||'';
+      el.style.display=(n.indexOf(q)!==-1)&&(!s||st===s)?'':'none';
+    });
+  }
+  if (toolbar) {
+    toolbar.addEventListener('input', function(e){if(e.target.id==='loanSearch')doFilter();});
+    toolbar.addEventListener('change', function(e){if(e.target.id==='loanStatusFilter')doFilter();});
+  }
+
+  // ─── VIEW TOGGLE ───
+  document.addEventListener('click', function(e) {
+    var btn=e.target.closest('#cardViewBtnLoan'); if(!btn)return;
+    e.preventDefault();
+    var cv=document.getElementById('loanCardsView'),tv=document.getElementById('loanTableView'),tb=document.getElementById('tableViewBtnLoan');
+    if(cv&&tv){cv.style.display='';tv.style.display='none';btn.classList.add('active');if(tb)tb.classList.remove('active');}
+  });
+  document.addEventListener('click', function(e) {
+    var btn=e.target.closest('#tableViewBtnLoan'); if(!btn)return;
+    e.preventDefault();
+    var cv=document.getElementById('loanCardsView'),tv=document.getElementById('loanTableView'),cb=document.getElementById('cardViewBtnLoan');
+    if(cv&&tv){cv.style.display='none';tv.style.display='';btn.classList.add('active');if(cb)cb.classList.remove('active');}
+  });
+})();
 </script>
 {% endblock %}

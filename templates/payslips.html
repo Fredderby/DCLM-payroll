@@ -577,19 +577,19 @@
       content.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading payslip data...</p></div>';
       document.getElementById('previewDownloadBtn').setAttribute('data-id', id);
       document.getElementById('previewGeneratePdfBtn').setAttribute('data-id', id);
-      fetch('/payslips/'+id+'/data').then(function(r){if(!r.ok)throw new Error('Failed');return r.json();})
+      fetch('/payslips/'+id+'/data', {credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('Failed');return r.json();})
         .then(function(data){content.innerHTML=buildPreview(data);new bootstrap.Modal(document.getElementById('previewModal')).show();})
         .catch(function(err){content.innerHTML='<div class="alert alert-danger text-center py-4"><i class="fas fa-exclamation-triangle"></i> '+err.message+'</div>';new bootstrap.Modal(document.getElementById('previewModal')).show();});
     }
     else if (action === 'generate') {
       var btns = document.querySelectorAll('[data-id="'+id+'"]');
       btns.forEach(function(b){b.disabled=true;b.innerHTML='<i class="fas fa-spinner fa-spin"></i>';});
-      fetch('/payslips/'+id+'/generate-pdf',{method:'POST'})
+      fetch('/payslips/'+id+'/generate-pdf',{method:'POST',credentials:'same-origin'})
         .then(function(r){return r.json();})
         .then(function(d){
           if(!d.success){alert('Failed: '+(d.message||'Unknown'));return;}
           if(currentPreviewId===id){
-            fetch('/payslips/'+id+'/data').then(function(r){return r.json();}).then(function(data){
+          fetch('/payslips/'+id+'/data', {credentials:'same-origin'}).then(function(r){return r.json();}).then(function(data){
               var c=document.getElementById('previewContent');if(c)c.innerHTML=buildPreview(data);
               document.getElementById('previewGeneratePdfBtn').setAttribute('data-id',id);
               document.getElementById('previewDownloadBtn').setAttribute('data-id',id);
@@ -702,11 +702,8 @@
     };
   }
 
-  // Re-run after SPA navigation (reconnect toggle/filter)
-  document.addEventListener('spa-content-loaded', function() {
-    setupToggle();
-    setupFilter();
-  });
+  // Re-run after SPA navigation
+  document.addEventListener('spa-content-loaded', setupPage);
 })();
 </script>
 {% endblock %}
