@@ -1,7 +1,8 @@
 /**
- * DCLM Payroll - SPA Navigation System v4
+ * DCLM Payroll - SPA Navigation System v5
  * Smooth page transitions via fetch + history.pushState
  * Leaves sidebar intact - swaps only content area
+ * Now captures extra styles/scripts from outside content-wrapper
  */
 
 (function() {
@@ -88,8 +89,49 @@
     var navMount = newContent.querySelector('#navigation-mount');
     if (navMount) navMount.remove();
 
+    // Capture extra inline styles/scripts from throughout the fetched page
+    var extraCssBlocks = [];
+    var extraScriptsToLoad = [];
+
+    var allExtraStyles = temp.querySelectorAll('style');
+    allExtraStyles.forEach(function(s) {
+      // Only take styles that aren't inside the new content
+      if (!newContent.contains(s)) {
+        extraCssBlocks.push(s.textContent);
+      }
+    });
+
+    var allExtraScripts = temp.querySelectorAll('script');
+    allExtraScripts.forEach(function(s) {
+      // Only take scripts that aren't inside the new content
+      if (!newContent.contains(s)) {
+        if (s.src) {
+          extraScriptsToLoad.push(s.src);
+        } else {
+          extraCssBlocks.push(s.textContent);
+        }
+      }
+    });
+
     // Replace current content
     contentWrapper.innerHTML = newContent.innerHTML;
+
+    // Inject extra styles from the fetched page into the document head
+    extraCssBlocks.forEach(function(css) {
+      var styleTag = document.createElement('style');
+      styleTag.textContent = css;
+      document.head.appendChild(styleTag);
+    });
+
+    // Load extra scripts from the fetched page (deduped)
+    extraScriptsToLoad.forEach(function(src) {
+      if (!document.querySelector('script[src="' + src + '"]')) {
+        var ns = document.createElement('script');
+        ns.src = src;
+        ns.async = false;
+        document.body.appendChild(ns);
+      }
+    });
 
     // ─── Update page header (title, subtitle, actions) ───
     var headerEl = document.querySelector('.top-header');
@@ -104,7 +146,6 @@
         var parentDiv = headerEl.querySelector('.top-header-left > div');
         var newParentDiv = newHeader.querySelector('.top-header-left > div');
         if (parentDiv && newParentDiv) {
-          // Replace subtitle and any extras in the div (keeping title element)
           var title = parentDiv.querySelector('.page-title');
           parentDiv.innerHTML = newParentDiv.innerHTML;
         }
@@ -124,8 +165,14 @@
       }
     }
 
-    // Re-execute any scripts
+    // Re-execute any scripts inside the new content
     reExecuteScripts(contentWrapper);
+
+    // Re-init Bootstrap tooltips/popovers if needed
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      var tooltips = [].slice.call(contentWrapper.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      tooltips.forEach(function(el) { new bootstrap.Tooltip(el); });
+    }
 
     // Dispatch custom event for page-specific initializers
     var event = new CustomEvent('spa-content-loaded', { detail: { url: url } });

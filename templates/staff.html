@@ -5,9 +5,244 @@
 {% block page_title %}Employee Management{% endblock %}
 {% block page_subtitle %}View, edit, and manage all employees{% endblock %}
 
+{% block extra_head %}
+<style>
+/* ========== Employee Card Styles ========== */
+.emp-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: all 0.25s ease;
+  box-shadow: var(--shadow-sm);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.emp-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
+  border-color: var(--accent);
+}
+
+.emp-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px 14px;
+  background: linear-gradient(135deg, var(--accent-light, #f0f2ff), #f8f9fe);
+  border-bottom: 1px solid var(--border-color);
+  position: relative;
+}
+
+.emp-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), #764ba2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.emp-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.emp-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+
+.emp-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.emp-card-badge {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.emp-card-badge.secondary {
+  background: var(--bg-body);
+  color: var(--text-secondary);
+}
+
+.emp-card-body {
+  padding: 14px 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emp-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-light, #f1f5f9);
+  font-size: 13px;
+}
+
+.emp-info-row:last-child {
+  border-bottom: none;
+}
+
+.emp-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.emp-label i {
+  width: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.emp-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+  font-size: 13px;
+}
+
+.emp-card-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-subtle, #fafbfc);
+}
+
+.emp-card-actions .btn {
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+/* ========== View Toggle ========== */
+.view-toggle-group {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.view-toggle-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-toggle-btn:hover {
+  background: var(--bg-body);
+  color: var(--text-primary);
+}
+
+.view-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(102, 126, 234, 0.3);
+}
+
+.view-toggle-btn:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+/* ========== Filter Bar ========== */
+.filter-bar .form-select,
+.filter-bar .form-control {
+  font-size: 13px;
+}
+
+/* ========== Empty State ========== */
+.emp-empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.emp-empty-state-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.emp-empty-state h4 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.emp-empty-state p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  max-width: 400px;
+  margin: 0 auto 20px;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 576px) {
+  .emp-card-header {
+    padding: 14px 16px 12px;
+  }
+  .emp-card-body {
+    padding: 12px 16px;
+  }
+  .emp-card-actions {
+    padding: 10px 16px;
+    flex-direction: column;
+  }
+  .emp-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .emp-value {
+    text-align: left;
+  }
+}
+</style>
+{% endblock %}
+
 {% block header_actions %}
 <button class="btn btn-primary btn-sm" onclick="window.__openNewEmployee(event)"><i class="fas fa-plus"></i> Add Employee</button>
-<button class="btn btn-secondary btn-sm" id="uploadEmployeesBtn"><i class="fas fa-upload"></i> Upload CSV/Excel</button>
+<button class="btn btn-secondary btn-sm" id="uploadEmployeesBtn"><i class="fas fa-upload"></i> Upload</button>
 <a href="/staff/template/download" class="btn btn-ghost btn-sm" download><i class="fas fa-download"></i> Template</a>
 {% endblock %}
 
@@ -19,11 +254,11 @@
 <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
 {% endif %}
 
-<!-- Search & Filter Bar + Toggle -->
-<div class="card mb-3">
+<!-- Search & Filter Bar + View Toggle -->
+<div class="card mb-3 filter-bar">
   <div class="card-body py-2">
     <div class="d-flex flex-wrap gap-2 align-items-center">
-      <div class="input-group input-group-sm" style="max-width:320px;flex:1;min-width:200px;">
+      <div class="input-group input-group-sm" style="max-width:320px;flex:1;min-width:180px;">
         <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
         <input type="text" id="empSearch" class="form-control border-start-0" placeholder="Search by name or email..." />
       </div>
@@ -59,9 +294,9 @@
       </select>
       <button class="btn btn-sm btn-ghost" id="resetFiltersBtn"><i class="fas fa-undo"></i> Reset</button>
       <span class="flex-fill"></span>
-      <div class="btn-group btn-group-sm">
-        <button class="btn btn-ghost active" id="cardViewBtnEmp"><i class="fas fa-th-large"></i> Cards</button>
-        <button class="btn btn-ghost" id="tableViewBtnEmp"><i class="fas fa-list"></i> Table</button>
+      <div class="view-toggle-group">
+        <button class="view-toggle-btn active" id="cardViewBtnEmp"><i class="fas fa-th-large"></i> Cards</button>
+        <button class="view-toggle-btn" id="tableViewBtnEmp"><i class="fas fa-list"></i> Table</button>
       </div>
     </div>
   </div>
@@ -78,14 +313,29 @@
           <div class="emp-card-name">{{ emp.name }}</div>
           <div class="emp-card-sub">#{{ emp.employee_number or 'N/A' }}<span class="mx-1">·</span>{{ emp.function or 'N/A' }}</div>
         </div>
-        <span class="badge {% if emp.function %}badge-info{% else %}badge-secondary{% endif %}" style="font-size:10px;">{{ emp.designation or '—' }}</span>
+        <span class="emp-card-badge {% if emp.designation %}primary{% else %}secondary{% endif %}">{{ emp.designation or '—' }}</span>
       </div>
       <div class="emp-card-body">
-        <div class="emp-info-row"><span class="emp-label"><i class="fas fa-envelope" style="width:14px;color:#64748b;"></i> Email</span><span class="emp-value">{{ emp.email or '—' }}</span></div>
-        <div class="emp-info-row"><span class="emp-label"><i class="fas fa-map-pin" style="width:14px;color:#64748b;"></i> Location</span><span class="emp-value">{{ emp.location or '—' }}</span></div>
-        <div class="emp-info-row"><span class="emp-label"><i class="fas fa-university" style="width:14px;color:#64748b;"></i> Bank</span><span class="emp-value">{{ emp.bank_name or '—' }}</span></div>
-        <div class="emp-info-row"><span class="emp-label"><i class="fas fa-credit-card" style="width:14px;color:#64748b;"></i> Account</span><span class="emp-value">{{ emp.bank_number or '—' }}</span></div>
-        <div class="emp-info-row"><span class="emp-label"><i class="fas fa-calendar" style="width:14px;color:#64748b;"></i> Joined</span><span class="emp-value">{{ emp.date_joined.strftime('%d %b %Y') if emp.date_joined else '—' }}</span></div>
+        <div class="emp-info-row">
+          <span class="emp-label"><i class="fas fa-envelope"></i> Email</span>
+          <span class="emp-value">{{ emp.email or '—' }}</span>
+        </div>
+        <div class="emp-info-row">
+          <span class="emp-label"><i class="fas fa-map-pin"></i> Location</span>
+          <span class="emp-value">{{ emp.location or '—' }}</span>
+        </div>
+        <div class="emp-info-row">
+          <span class="emp-label"><i class="fas fa-university"></i> Bank</span>
+          <span class="emp-value">{{ emp.bank_name or '—' }}</span>
+        </div>
+        <div class="emp-info-row">
+          <span class="emp-label"><i class="fas fa-credit-card"></i> Account</span>
+          <span class="emp-value">····{{ (emp.bank_number or '—')[-4:] if emp.bank_number and emp.bank_number|length >= 4 else (emp.bank_number or '—') }}</span>
+        </div>
+        <div class="emp-info-row">
+          <span class="emp-label"><i class="fas fa-calendar"></i> Joined</span>
+          <span class="emp-value">{{ emp.date_joined.strftime('%d %b %Y') if emp.date_joined else '—' }}</span>
+        </div>
       </div>
       <div class="emp-card-actions">
         <button class="btn btn-sm btn-ghost emp-view-btn" data-id="{{ emp.id }}"><i class="fas fa-eye"></i> View</button>
@@ -136,10 +386,10 @@
 </div>
 
 {% if not employees %}
-<div class="text-center py-5">
-  <div style="font-size:48px;margin-bottom:16px;">👥</div>
+<div class="emp-empty-state">
+  <div class="emp-empty-state-icon">👥</div>
   <h4>No Employees Found</h4>
-  <p>Add employees to get started.</p>
+  <p>Add employees to get started, or upload a CSV/Excel file.</p>
   <button class="btn btn-primary" onclick="window.__openNewEmployee(event)"><i class="fas fa-plus"></i> Add Employee</button>
 </div>
 {% endif %}
@@ -210,28 +460,13 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<style>
-.emp-card{background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;transition:all .25s ease;box-shadow:0 2px 8px rgba(0,0,0,0.04);height:100%;display:flex;flex-direction:column}
-.emp-card:hover{box-shadow:0 12px 32px rgba(0,0,0,0.08);transform:translateY(-3px);border-color:#667eea}
-.emp-card-header{display:flex;align-items:center;gap:12px;padding:16px;background:linear-gradient(135deg,#f8f9fe,#eef1ff);border-bottom:1px solid #e2e8f0}
-.emp-avatar{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:16px;flex-shrink:0}
-.emp-card-info{flex:1;min-width:0}
-.emp-card-name{font-size:15px;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.emp-card-sub{font-size:11px;color:#64748b}
-.emp-card-body{padding:12px 16px;flex:1}
-.emp-info-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #f1f5f9;font-size:13px}
-.emp-info-row:last-child{border-bottom:none}
-.emp-label{color:#64748b;font-weight:500;white-space:nowrap}
-.emp-value{color:#1e293b;font-weight:500;text-align:right}
-.emp-card-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e2e8f0;background:#fafbfc}
-.emp-card-actions .btn{flex:1;font-size:13px}
-</style>
-
 <script>
 (function() {
-  // Expose global functions for onclick attributes
+  'use strict';
+
+  // ─── Expose globals for onclick attributes ───
   window.__filterEmployees = filter;
-  window.__openNewEmployee = function(e) { if(e)e.preventDefault(); openEdit('new'); };
+  window.__openNewEmployee = function(e) { if(e) e.preventDefault(); openEdit('new'); };
 
   var currentEditId = null;
 
@@ -247,134 +482,226 @@
       var f = el.getAttribute('data-function')||'';
       var d = el.getAttribute('data-designation')||'';
       var l = el.getAttribute('data-location')||'';
-      el.style.display = (n.indexOf(search)!==-1||e.indexOf(search)!==-1)&&(!funcVal||f===funcVal)&&(!desigVal||d===desigVal)&&(!locVal||l===locVal)?'':'none';
+      var matchesSearch = (n.indexOf(search) !== -1 || e.indexOf(search) !== -1);
+      var matchesFunc = !funcVal || f === funcVal;
+      var matchesDesig = !desigVal || d === desigVal;
+      var matchesLoc = !locVal || l === locVal;
+      el.style.display = (matchesSearch && matchesFunc && matchesDesig && matchesLoc) ? '' : 'none';
     });
   }
 
   // ─── View Toggle ───
   function switchEmpView(view) {
-    var c = document.getElementById('empCardsView');
-    var t = document.getElementById('empTableView');
-    var cb = document.getElementById('cardViewBtnEmp');
-    var tb = document.getElementById('tableViewBtnEmp');
-    if (!c||!t) return;
-    if (view==='cards') { c.style.display=''; t.style.display='none'; if(cb)cb.classList.add('active'); if(tb)tb.classList.remove('active'); }
-    else { c.style.display='none'; t.style.display=''; if(cb)cb.classList.remove('active'); if(tb)tb.classList.add('active'); }
+    var cardsView = document.getElementById('empCardsView');
+    var tableView = document.getElementById('empTableView');
+    var cardBtn = document.getElementById('cardViewBtnEmp');
+    var tableBtn = document.getElementById('tableViewBtnEmp');
+    if (!cardsView || !tableView) return;
+    if (view === 'cards') {
+      cardsView.style.display = '';
+      tableView.style.display = 'none';
+      if (cardBtn) cardBtn.classList.add('active');
+      if (tableBtn) tableBtn.classList.remove('active');
+    } else {
+      cardsView.style.display = 'none';
+      tableView.style.display = '';
+      if (cardBtn) cardBtn.classList.remove('active');
+      if (tableBtn) tableBtn.classList.add('active');
+    }
   }
 
   // ─── View Details ───
   function openView(id) {
-    var c = document.getElementById('viewModalContent');
-    if (!c) return;
-    c.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-    fetch('/staff/'+id+'/details', {credentials:'same-origin'})
-      .then(function(r){if(!r.ok)throw new Error('Failed to load');return r.json();})
-      .then(function(d){
-        var h = '<div style="padding:8px"><div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0">';
-        h += '<div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0">'+(d.name?d.name.slice(0,2).toUpperCase():'??')+'</div>';
-        h += '<div><h4 style="margin:0;font-size:18px">'+(d.name||'')+'</h4><span style="font-size:12px;color:#64748b">#'+(d.employee_number||'N/A')+'</span></div></div>';
+    var contentEl = document.getElementById('viewModalContent');
+    if (!contentEl) return;
+    contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    fetch('/staff/' + id + '/details', { credentials: 'same-origin' })
+      .then(function(r) { if (!r.ok) throw new Error('Failed to load employee details'); return r.json(); })
+      .then(function(d) {
+        var html = '<div style="padding:8px">';
+        // Header
+        html += '<div class="d-flex align-items-center gap-3 mb-4 pb-3" style="border-bottom:1px solid var(--border-color)">';
+        html += '<div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#764ba2);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;flex-shrink:0">' + (d.name ? d.name.slice(0,2).toUpperCase() : '??') + '</div>';
+        html += '<div><h4 class="mb-0" style="font-size:18px;font-weight:700">' + (d.name || '') + '</h4><span style="font-size:12px;color:var(--text-secondary)">#' + (d.employee_number || 'N/A') + '</span></div>';
+        html += '</div>';
+        // Details grid
         var fields = [
-          ['Email',d.email],['Designation',d.designation],['Function',d.function],['Location',d.location],
-          ['Bank Name',d.bank_name],['Bank Branch',d.bank_branch],['Bank Account',d.bank_number],
-          ['SSNIT Number',d.ssnit_number],['Date Joined',d.date_joined],
-          ['Tax Relief',d.tax_relief!==undefined&&d.tax_relief!==null?'GHS '+Number(d.tax_relief).toFixed(2):null],
-          ['Employer Contr.',d.employer_contribution!==undefined&&d.employer_contribution!==null?'GHS '+Number(d.employer_contribution).toFixed(2):null]
+          ['Email', d.email],
+          ['Designation', d.designation],
+          ['Function', d.function],
+          ['Location', d.location],
+          ['Bank Name', d.bank_name],
+          ['Bank Branch', d.bank_branch],
+          ['Bank Account', d.bank_number],
+          ['SSNIT Number', d.ssnit_number],
+          ['Date Joined', d.date_joined],
+          ['Tax Relief', (d.tax_relief !== undefined && d.tax_relief !== null) ? 'GHS ' + Number(d.tax_relief).toFixed(2) : null],
+          ['Employer Contr.', (d.employer_contribution !== undefined && d.employer_contribution !== null) ? 'GHS ' + Number(d.employer_contribution).toFixed(2) : null]
         ];
-        h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px">';
-        for(var i=0;i<fields.length;i++){if(fields[i][1]&&fields[i][1]!=='—'&&fields[i][1]!=='None'&&fields[i][1]!=='0.00'&&fields[i][1]!=='GHS 0.00'){
-          h += '<div style="display:flex;gap:6px;font-size:13px;padding:4px 0;border-bottom:1px solid #f1f5f9"><span style="color:#64748b;font-weight:500;min-width:110px">'+fields[i][0]+':</span><span style="color:#1e293b;font-weight:500">'+fields[i][1]+'</span></div>';
-        }}
-        h += '</div></div>';
-        c.innerHTML = h;
+        html += '<div class="row g-2">';
+        for (var i = 0; i < fields.length; i++) {
+          if (fields[i][1] && fields[i][1] !== '—' && fields[i][1] !== 'None' && fields[i][1] !== '0.00' && fields[i][1] !== 'GHS 0.00') {
+            html += '<div class="col-sm-6"><div class="d-flex gap-2 py-2" style="border-bottom:1px solid var(--border-light)"><span style="color:var(--text-secondary);font-weight:500;min-width:110px;font-size:13px">' + fields[i][0] + ':</span><span style="color:var(--text-primary);font-weight:600;font-size:13px">' + fields[i][1] + '</span></div></div>';
+          }
+        }
+        html += '</div></div>';
+        contentEl.innerHTML = html;
         currentEditId = id;
         new bootstrap.Modal(document.getElementById('viewModal')).show();
       })
-      .catch(function(err){c.innerHTML='<div class="alert alert-danger text-center py-3"><i class="fas fa-exclamation-triangle"></i> '+err.message+'</div>';new bootstrap.Modal(document.getElementById('viewModal')).show();});
+      .catch(function(err) {
+        contentEl.innerHTML = '<div class="alert alert-danger text-center py-3 mb-0"><i class="fas fa-exclamation-triangle me-2"></i>' + err.message + '</div>';
+        new bootstrap.Modal(document.getElementById('viewModal')).show();
+      });
   }
 
   // ─── Edit ───
   function openEdit(id) {
     currentEditId = id;
-    var c = document.getElementById('editModalContent');
-    var f = document.getElementById('editForm');
-    if (!c) return;
-    function buildForm(d){
-      var v=function(k,def){return d&&d[k]!==undefined&&d[k]!==null?String(d[k]).replace(/"/g,'&quot;'):(def||'');};
-      return '<div class="row g-2">'+
-        '<div class="col-6"><label style="font-size:12px">Name <span class="text-danger">*</span></label><input type="text" name="name" class="form-control form-control-sm" required value="'+v('name')+'" /></div>'+
-        '<div class="col-3"><label style="font-size:12px">Employee # <span class="text-danger">*</span></label><input type="text" name="employee_number" class="form-control form-control-sm" required value="'+v('employee_number')+'" /></div>'+
-        '<div class="col-3"><label style="font-size:12px">Date Joined</label><input type="date" name="date_joined" class="form-control form-control-sm" value="'+v('date_joined')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Email</label><input type="email" name="email" class="form-control form-control-sm" value="'+v('email')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Designation</label><input type="text" name="designation" class="form-control form-control-sm" value="'+v('designation')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Function</label><input type="text" name="function" class="form-control form-control-sm" value="'+v('function')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Location</label><input type="text" name="location" class="form-control form-control-sm" value="'+v('location')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">SSNIT Number</label><input type="text" name="ssnit_number" class="form-control form-control-sm" value="'+v('ssnit_number')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Bank Name</label><input type="text" name="bank_name" class="form-control form-control-sm" value="'+v('bank_name')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Bank Branch</label><input type="text" name="bank_branch" class="form-control form-control-sm" value="'+v('bank_branch')+'" /></div>'+
-        '<div class="col-6"><label style="font-size:12px">Bank Account</label><input type="text" name="bank_number" class="form-control form-control-sm" value="'+v('bank_number')+'" /></div>'+
-        '<div class="col-4"><label style="font-size:12px">Tax Relief</label><input type="text" name="tax_relief" class="form-control form-control-sm" value="'+v('tax_relief','0')+'" /></div>'+
-        '<div class="col-4"><label style="font-size:12px">Employer Contr.</label><input type="number" step="0.01" name="employer_contribution" class="form-control form-control-sm" value="'+v('employer_contribution','0')+'" /></div>'+
+    var contentEl = document.getElementById('editModalContent');
+    var form = document.getElementById('editForm');
+    if (!contentEl || !form) return;
+
+    function buildForm(d) {
+      var v = function(k, def) { return d && d[k] !== undefined && d[k] !== null ? String(d[k]).replace(/"/g,'&quot;') : (def || ''); };
+      return '<div class="row g-2">' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Name <span class="text-danger">*</span></label><input type="text" name="name" class="form-control form-control-sm" required value="' + v('name') + '" /></div>' +
+        '<div class="col-sm-3"><label class="form-label" style="font-size:12px">Employee # <span class="text-danger">*</span></label><input type="text" name="employee_number" class="form-control form-control-sm" required value="' + v('employee_number') + '" /></div>' +
+        '<div class="col-sm-3"><label class="form-label" style="font-size:12px">Date Joined</label><input type="date" name="date_joined" class="form-control form-control-sm" value="' + v('date_joined') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Email</label><input type="email" name="email" class="form-control form-control-sm" value="' + v('email') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Designation</label><input type="text" name="designation" class="form-control form-control-sm" value="' + v('designation') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Function</label><input type="text" name="function" class="form-control form-control-sm" value="' + v('function') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Location</label><input type="text" name="location" class="form-control form-control-sm" value="' + v('location') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">SSNIT Number</label><input type="text" name="ssnit_number" class="form-control form-control-sm" value="' + v('ssnit_number') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Name</label><input type="text" name="bank_name" class="form-control form-control-sm" value="' + v('bank_name') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Branch</label><input type="text" name="bank_branch" class="form-control form-control-sm" value="' + v('bank_branch') + '" /></div>' +
+        '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Account</label><input type="text" name="bank_number" class="form-control form-control-sm" value="' + v('bank_number') + '" /></div>' +
+        '<div class="col-sm-4"><label class="form-label" style="font-size:12px">Tax Relief (GHS)</label><input type="number" step="0.01" name="tax_relief" class="form-control form-control-sm" value="' + v('tax_relief','0') + '" /></div>' +
+        '<div class="col-sm-4"><label class="form-label" style="font-size:12px">Employer Contr. (GHS)</label><input type="number" step="0.01" name="employer_contribution" class="form-control form-control-sm" value="' + v('employer_contribution','0') + '" /></div>' +
         '</div>';
     }
-    if(id==='new'){f.action='/staff/create';c.innerHTML=buildForm(null);new bootstrap.Modal(document.getElementById('editModal')).show();return;}
-    f.action='/staff/update/'+id;
-    fetch('/staff/'+id+'/details',{credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('Failed');return r.json();})
-      .then(function(d){c.innerHTML=buildForm(d);new bootstrap.Modal(document.getElementById('editModal')).show();})
-      .catch(function(err){c.innerHTML='<div class="alert alert-danger text-center py-3"><i class="fas fa-exclamation-triangle"></i> '+err.message+'</div>';new bootstrap.Modal(document.getElementById('editModal')).show();});
+
+    if (id === 'new') {
+      form.action = '/staff/create';
+      contentEl.innerHTML = buildForm(null);
+      new bootstrap.Modal(document.getElementById('editModal')).show();
+      return;
+    }
+
+    form.action = '/staff/update/' + id;
+    fetch('/staff/' + id + '/details', { credentials: 'same-origin' })
+      .then(function(r) { if (!r.ok) throw new Error('Failed to load employee data'); return r.json(); })
+      .then(function(d) {
+        contentEl.innerHTML = buildForm(d);
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+      })
+      .catch(function(err) {
+        contentEl.innerHTML = '<div class="alert alert-danger text-center py-3 mb-0"><i class="fas fa-exclamation-triangle me-2"></i>' + err.message + '</div>';
+        new bootstrap.Modal(document.getElementById('editModal')).show();
+      });
   }
 
-  // ─── Setup (runs on page load AND SPA navigation) ───
+  // ─── Setup (called on page load & SPA navigation) ───
   function setupPage() {
-    // Re-bind filter events using oninput/onchange (survives DOM replacement)
+    // Search input
     var search = document.getElementById('empSearch');
     if (search) search.oninput = filter;
-    var fs = document.querySelectorAll('#filterFunc, #filterDesig, #filterLoc');
-    for (var i=0;i<fs.length;i++){ fs[i].onchange = filter; }
 
-    // View toggle
-    var cb = document.getElementById('cardViewBtnEmp');
-    var tb = document.getElementById('tableViewBtnEmp');
-    if (cb) cb.onclick = function(e){e.preventDefault();switchEmpView('cards');};
-    if (tb) tb.onclick = function(e){e.preventDefault();switchEmpView('table');};
+    // Filter dropdowns
+    var filterSelects = document.querySelectorAll('#filterFunc, #filterDesig, #filterLoc');
+    for (var i = 0; i < filterSelects.length; i++) {
+      filterSelects[i].onchange = filter;
+    }
+
+    // View toggle buttons (using new .view-toggle-btn class)
+    var cardBtn = document.getElementById('cardViewBtnEmp');
+    var tableBtn = document.getElementById('tableViewBtnEmp');
+
+    if (cardBtn) {
+      cardBtn.onclick = function(e) {
+        e.preventDefault();
+        switchEmpView('cards');
+      };
+    }
+    if (tableBtn) {
+      tableBtn.onclick = function(e) {
+        e.preventDefault();
+        switchEmpView('table');
+      };
+    }
 
     // Upload button
-    var upBtn = document.getElementById('uploadEmployeesBtn');
-    if (upBtn) upBtn.onclick = function(e){
-      e.preventDefault();
-      new bootstrap.Modal(document.getElementById('uploadModal')).show();
-    };
-
-    // Upload form - standard POST (cookies work properly with form submission)
-    var upForm = document.getElementById('uploadForm');
-    if (upForm) upForm.onsubmit = function(e){
-      document.getElementById('uploadProgress').style.display = '';
-      document.getElementById('uploadSubmitBtn').disabled = true;
-      document.getElementById('uploadSubmitBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
-      // Form will submit normally and page will reload with server response
-    };
+    var uploadBtn = document.getElementById('uploadEmployeesBtn');
+    if (uploadBtn) {
+      uploadBtn.onclick = function(e) {
+        e.preventDefault();
+        var modalEl = document.getElementById('uploadModal');
+        if (modalEl) new bootstrap.Modal(modalEl).show();
+      };
+    }
 
     // Reset filters
-    var reset = document.getElementById('resetFiltersBtn');
-    if (reset) reset.onclick = function(e){
-      e.preventDefault();
-      if(search)search.value='';
-      for(var i=0;i<fs.length;i++)fs[i].value='';
-      filter();
-    };
+    var resetBtn = document.getElementById('resetFiltersBtn');
+    if (resetBtn) {
+      resetBtn.onclick = function(e) {
+        e.preventDefault();
+        var s = document.getElementById('empSearch');
+        if (s) s.value = '';
+        var selects = document.querySelectorAll('#filterFunc, #filterDesig, #filterLoc');
+        for (var j = 0; j < selects.length; j++) {
+          selects[j].value = '';
+        }
+        filter();
+      };
+    }
+
+    // Upload form handling
+    var uploadForm = document.getElementById('uploadForm');
+    if (uploadForm) {
+      uploadForm.onsubmit = function() {
+        var progress = document.getElementById('uploadProgress');
+        var submitBtn = document.getElementById('uploadSubmitBtn');
+        if (progress) progress.style.display = '';
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+        }
+        // Form submits normally, page reloads
+      };
+    }
   }
 
-  // ─── Event delegation (survives DOM replacement) ───
+  // ─── Event delegation (survives DOM replacement across SPA) ───
   document.addEventListener('click', function(e) {
     var btn;
+
     btn = e.target.closest('.emp-view-btn');
-    if (btn) { e.preventDefault(); e.stopPropagation(); openView(btn.getAttribute('data-id')); return; }
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openView(btn.getAttribute('data-id'));
+      return;
+    }
+
     btn = e.target.closest('.emp-edit-btn');
-    if (btn) { e.preventDefault(); e.stopPropagation(); openEdit(btn.getAttribute('data-id')); return; }
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      openEdit(btn.getAttribute('data-id'));
+      return;
+    }
+
     btn = e.target.closest('.emp-edit-from-view');
-    if (btn) { e.preventDefault(); var m=bootstrap.Modal.getInstance(document.getElementById('viewModal')); if(m)m.hide(); if(currentEditId)openEdit(currentEditId); return; }
+    if (btn) {
+      e.preventDefault();
+      var viewModal = bootstrap.Modal.getInstance(document.getElementById('viewModal'));
+      if (viewModal) viewModal.hide();
+      if (currentEditId) openEdit(currentEditId);
+      return;
+    }
   });
 
-  // Initialize and re-init on SPA
+  // ─── Initialize on page load and on SPA navigation ───
   setupPage();
   document.addEventListener('spa-content-loaded', setupPage);
 })();

@@ -551,6 +551,14 @@ input, select, textarea { font-family: inherit; }
   color: var(--text-primary);
 }
 
+.btn-ghost.active,
+.btn-ghost:active {
+  background: var(--accent-light, rgba(102, 126, 234, 0.1));
+  color: var(--accent, #667eea);
+  border-color: transparent;
+  font-weight: 600;
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
