@@ -18,30 +18,19 @@
   if (window.__spaNavInitialized) return;
   window.__spaNavInitialized = true;
 
-  // Force full page reload if coming from login (fresh=true param)
-  if (window.location.search.indexOf('_fresh=true') !== -1 || window.location.href.indexOf('_fresh=true') !== -1) {
-    // Remove the param from URL to prevent loops, but let page fully load
-    var cleanUrl = window.location.href.replace(/[?&]_fresh=true/g, '').replace(/&&/g, '&').replace(/\?&/g, '?');
-    if (cleanUrl !== window.location.href) {
-      window.history.replaceState({}, '', cleanUrl);
+    // Force full page reload if coming from login (fresh=true param)
+  // CRITICAL: After login, the auth cookie is set but SPA navigation would cache
+  // the previous page state, causing all buttons/actions to be non-functional.
+  // A full reload ensures all JS initializes fresh with the authenticated context.
+  if (window.location.href.indexOf("_fresh=true") !== -1) {
+    var cleanUrl = window.location.href.replace(/[?&]_fresh=true/g, "").replace(/&&/g, "&").replace(/\?&/g, "?").replace(/\/\?/g, "/?");
+    if (cleanUrl !== window.location.href && cleanUrl.length > 0) {
+      window.history.replaceState({}, "", cleanUrl);
     }
-    // Run initialization after full page load
-    if (document.readyState === 'complete') {
-      setTimeout(function() {
-        if (window.updateActiveNavTab) window.updateActiveNavTab();
-        if (window.runSpaHooks) window.runSpaHooks();
-      }, 100);
-    } else {
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(function() {
-          if (window.updateActiveNavTab) window.updateActiveNavTab();
-          if (window.runSpaHooks) window.runSpaHooks();
-        }, 100);
-      });
-    }
-  }
-
-  var contentWrapper = document.querySelector('.content-wrapper');
+    // Full page reload to ensure all modules reinitialize with auth context
+    window.location.reload(true);
+    return;
+  }  var contentWrapper = document.querySelector('.content-wrapper');
   if (!contentWrapper) return;
 
   var cache = {};

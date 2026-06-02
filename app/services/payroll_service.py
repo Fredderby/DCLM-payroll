@@ -1,4 +1,5 @@
 from app.models.payroll import PayrollRecord
+from app.services.cache_service import cached
 from app.models.employee import Employee
 from sqlalchemy.orm import Session
 from datetime import datetime

@@ -171,7 +171,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             employee_names = list(set(p.employee_name for p in recent_payslips))
             employees = {e.name: e for e in db.query(Employee).filter(Employee.name.in_(employee_names)).all()}
             for p in recent_payslips:
-                p.employee_obj = employees.get(p.employee_name)
+                p.employee = emp  # Use p.employee for template access (email, etc.)loyees.get(p.employee_name)
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
         
         template = templates.get_template("dashboard.html")
@@ -1215,13 +1215,13 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             # Attach employee info to each payslip
             for p in payslips:
                 emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
-                p.employee_obj = emp
+                p.employee = emp  # Use p.employee for template access (email, etc.)
             
             # Apply filter
             if filter_by == "with_email":
-                payslips = [p for p in payslips if p.employee_obj and p.employee_obj.email]
+                payslips = [p for p in payslips if p.employee and p.employee.email]
             elif filter_by == "no_email":
-                payslips = [p for p in payslips if not p.employee_obj or not p.employee_obj.email]
+                payslips = [p for p in payslips if not p.employee or not p.employee.email]
         
                 # Get recent email logs
         email_logs = []
@@ -1237,6 +1237,7 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             "months": months,
             "selected_month": month,
             "filter_by": filter_by,
+        "email_filter": filter_by,
             "payslips": payslips,
             "email_logs": email_logs,
             "smtp_configured": bool(settings.smtp_server and settings.smtp_username),
@@ -1978,7 +1979,7 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
         # Convert to serializable format for template
         uploads_list = []
         for u in uploads:
-            ts = getattr(u, 'created_at', None) or getattr(u, 'timestamp', None)
+            ts = u.timestamp
             
             uploads_list.append({
                 "id": u.id,
@@ -2031,6 +2032,52 @@ async def employee_detail(request: Request, employee_id: int, db: Session = Depe
         "bank_number": emp.bank_number,
         "bank_branch": emp.bank_branch
     }
+
+@app.post("/payslips/{payroll_id}/send-single")
+async def send_single_payslip(request: Request, payroll_id: int, db: Session = Depends(get_db)):
+    """Send a single payslip to an employee via email."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse(content={"success": False, "error": "Not authenticated"}, status_code=401)
+
+    from app.models.payroll import PayrollRecord
+    from app.models.employee import Employee
+    from app.services.pdf_service import generate_payslip_pdf
+    from app.services.email_service import send_payslip_email
+
+    record = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
+    if not record:
+        return JSONResponse(content={"success": False, "error": "Payslip not found"}, status_code=404)
+
+    emp = db.query(Employee).filter(Employee.name == record.employee_name).first()
+    if not emp:
+        return JSONResponse(content={"success": False, "error": "Employee not found"}, status_code=404)
+
+    if not emp.email:
+        return JSONResponse(content={"success": False, "error": "No email address for this employee"})
+
+    # Generate PDF if not exists
+    pdf_path = record.pdf_generated
+    if not pdf_path or not os.path.exists(pdf_path):
+        pdf_path = generate_payslip_pdf(db, record.id)
+        if pdf_path:
+            record.pdf_generated = pdf_path
+            db.commit()
+
+    if not pdf_path or not os.path.exists(pdf_path):
+        return JSONResponse(content={"success": False, "error": "Failed to generate PDF"})
+
+    # Send email
+    try:
+        success = send_payslip_email(emp.email, emp.name, pdf_path, record.month)
+        if success:
+            return JSONResponse(content={"success": True, "message": "Payslip sent to " + emp.email})
+        else:
+            return JSONResponse(content={"success": False, "error": "Email sending failed"})
+    except Exception as e:
+        return JSONResponse(content={"success": False, "error": str(e)})
+
 
 @app.get("/logout")
 async def logout(request: Request):
