@@ -58,21 +58,38 @@ def init_db():
     
     try:
         conn = engine.connect()
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_payroll_month ON payroll_records(month);
-            CREATE INDEX IF NOT EXISTS idx_payroll_employee_name ON payroll_records(employee_name);
-            CREATE INDEX IF NOT EXISTS idx_payroll_month_employee ON payroll_records(month, employee_name);
-            CREATE INDEX IF NOT EXISTS idx_employee_name ON employees(name);
-            CREATE INDEX IF NOT EXISTS idx_employee_email ON employees(email);
-            CREATE INDEX IF NOT EXISTS idx_employee_number ON employees(employee_number);
-            CREATE INDEX IF NOT EXISTS idx_upload_created_at ON upload_history(created_at);
-            CREATE INDEX IF NOT EXISTS idx_upload_month ON upload_history(month);
-        """))
-        conn.commit()
+        
+        # Run schema migrations for tables that might have been altered
+        # UploadHistory: add month column if missing
+        try:
+            conn.execute(text("ALTER TABLE upload_history ADD COLUMN month VARCHAR(20) DEFAULT NULL"))
+            conn.commit()
+            logger.info("Added 'month' column to upload_history table.")
+        except Exception:
+            conn.rollback()  # Column already exists - ignore
+        
+        # Create performance indexes for known tables
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS idx_payroll_month ON payroll_records(month)",
+            "CREATE INDEX IF NOT EXISTS idx_payroll_employee_name ON payroll_records(employee_name)",
+            "CREATE INDEX IF NOT EXISTS idx_payroll_month_employee ON payroll_records(month, employee_name)",
+            "CREATE INDEX IF NOT EXISTS idx_employee_name ON employees(name)",
+            "CREATE INDEX IF NOT EXISTS idx_employee_email ON employees(email)",
+            "CREATE INDEX IF NOT EXISTS idx_employee_number ON employees(employee_number)",
+            "CREATE INDEX IF NOT EXISTS idx_upload_created_at ON upload_history(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_upload_month ON upload_history(month)",
+        ]
+        for stmt in index_statements:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                conn.rollback()  # Index might already exist or table might not exist yet
+        
         conn.close()
-        logger.info("Performance indexes created/verified.")
+        logger.info("Schema migrations and indexes verified.")
     except Exception as e:
-        logger.warning(f"Could not create indexes (non-critical): {e}")
+        logger.warning(f"Could not run schema migrations (non-critical): {e}")
 
 # Import text for raw SQL
 from sqlalchemy import text
