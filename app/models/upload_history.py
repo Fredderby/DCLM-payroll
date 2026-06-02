@@ -10,4 +10,4 @@ class UploadHistory(Base):
     uploaded_by = Column(Integer, ForeignKey("users.id"))
     month = Column(String(20), nullable=True)
     status = Column(String(50))  # success, failed, partial_failure
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())

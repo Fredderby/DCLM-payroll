@@ -76,7 +76,7 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_employee_name ON employees(name)",
             "CREATE INDEX IF NOT EXISTS idx_employee_email ON employees(email)",
             "CREATE INDEX IF NOT EXISTS idx_employee_number ON employees(employee_number)",
-            "CREATE INDEX IF NOT EXISTS idx_upload_created_at ON upload_history(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_upload_timestamp ON upload_history(timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_upload_month ON upload_history(month)",
         ]
         for stmt in index_statements:
