@@ -52,5 +52,56 @@
   <script defer src="/static/js/progress-system.js"></script>
   <script src="/static/js/spa-navigation.js"></script>
   {% block extra_scripts %}{% endblock %}
+<!-- Global Loading Overlay -->
+<div id="globalLoadingOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.7);z-index:9999;display:none;align-items:center;justify-content:center;">
+  <div style="text-align:center;">
+    <div class="spinner-border" style="width:3rem;height:3rem;color:#2563eb;" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <p style="margin-top:12px;color:#475569;font-weight:500;" id="loadingMessage">Processing...</p>
+  </div>
+</div>
+
+<script>
+// Global loading indicator functions
+function showLoading(message) {
+  var overlay = document.getElementById("globalLoadingOverlay");
+  if (overlay) {
+    overlay.style.display = "flex";
+    var msg = document.getElementById("loadingMessage");
+    if (msg && message) msg.textContent = message;
+  }
+}
+function hideLoading() {
+  var overlay = document.getElementById("globalLoadingOverlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+// Auto-show loading on form submissions
+document.addEventListener("submit", function(e) {
+  var form = e.target;
+  // Show loading for POST forms (upload, payroll actions)
+  if (form.method && form.method.toLowerCase() === "post") {
+    if (form.action && (form.action.indexOf("/upload") !== -1 || form.action.indexOf("/payroll") !== -1 ||
+         form.action.indexOf("/loans") !== -1 || form.action.indexOf("/payslips") !== -1)) {
+      showLoading("Processing...");
+    }
+  }
+});
+
+// Auto-show loading on navigation to data-heavy pages
+document.addEventListener("click", function(e) {
+  var link = e.target.closest("a[href]");
+  if (!link) return;
+  var href = link.getAttribute("href") || "";
+  if (href.indexOf("/payslips") !== -1 || href.indexOf("/reports") !== -1 ||
+      href.indexOf("/send") !== -1 || href.indexOf("/upload") !== -1) {
+    if (!href.startsWith("http") || href.indexOf(window.location.origin) !== -1) {
+      showLoading("Loading...");
+    }
+  }
+});
+</script>
+
 </body>
 </html>

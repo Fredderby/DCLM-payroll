@@ -67,18 +67,24 @@ DCLM Payroll Management System"""
                 part.add_header("Content-Disposition", f"attachment; filename={os.path.basename(pdf_path)}")
                 message.attach(part)
 
+            # IMPORTANT: aiosmtplib.SMTP() auto-connects and handles STARTTLS automatically.
+            # Do NOT call starttls() manually - it causes "Connection already using TLS" error.
             if port == 465:
-                async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True) as smtp:
+                # SSL/TLS implicit mode
+                async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True, timeout=30) as smtp:
                     await smtp.login(username, password)
                     await smtp.send_message(message)
             else:
-                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
-                    await smtp.starttls()
+                # STARTTLS mode (port 587): aiosmtplib auto-handles TLS
+                async with aiosmtplib.SMTP(hostname=server, port=port, timeout=30) as smtp:
                     await smtp.login(username, password)
                     await smtp.send_message(message)
 
             return True, "Email sent successfully"
         except Exception as e:
+            import traceback
+            logger.error(f"SMTP send failed: {e}", exc_info=True)
+            traceback.print_exc()
             return False, str(e)
 
     @staticmethod
@@ -163,6 +169,9 @@ DCLM Payroll Management System"""
 
             return True, "Test email sent successfully!"
         except Exception as e:
+            import traceback
+            logger.error(f"SMTP send failed: {e}", exc_info=True)
+            traceback.print_exc()
             return False, str(e)
 
     @staticmethod
@@ -192,6 +201,9 @@ DCLM Payroll Management System"""
 
             return True, "Notification sent"
         except Exception as e:
+            import traceback
+            logger.error(f"SMTP send failed: {e}", exc_info=True)
+            traceback.print_exc()
             return False, str(e)
 
     @staticmethod
@@ -206,22 +218,29 @@ async def send_email(to_email: str, subject: str, body: str):
 
 
 async def send_payslip_email(recipient_email: str, employee_name: str, pdf_path: str, month: str):
-    """Send a single payslip via email. Top-level function for route handlers to import."""
+    """Send a single payslip via email. Returns (success: bool, error_msg: str) tuple."""
     try:
+        import traceback as _tb
         from app.models.payroll import PayrollRecord
         net_salary = 0
         if pdf_path and os.path.exists(pdf_path):
-            success, message = await EmailService.send_payslip(
+            success, smtp_msg = await EmailService.send_payslip(
                 recipient_email=recipient_email,
                 employee_name=employee_name,
                 month=month or "",
                 pdf_path=pdf_path,
                 net_salary=net_salary
             )
+            if not success:
+                log_msg = f"EMAIL FAILED for {recipient_email}: {smtp_msg}"
+                print(log_msg)
+            return success, smtp_msg
         else:
-            print(f"PDF not found for {recipient_email}: {pdf_path}")
-            return False
-        return success
+            error_msg = f"PDF not found: {pdf_path}"
+            print(f"EMAIL FAILED for {recipient_email}: {error_msg}")
+            return False, error_msg
     except Exception as e:
-        print(f"send_payslip_email error for {recipient_email}: {e}")
-        return False
+        error_msg = f"Exception: {type(e).__name__}: {e}"
+        print(f"EMAIL EXCEPTION for {recipient_email}: {error_msg}")
+        _tb.print_exc()
+        return False, error_msg

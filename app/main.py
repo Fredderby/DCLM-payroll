@@ -1190,7 +1190,7 @@ async def send_payslip_redirect(request: Request, msg: str, msg_type: str = "err
 
 @app.get("/payslips/send", response_class=HTMLResponse)
 @app.get("/payslips/send-all", response_class=HTMLResponse)
-async def send_all_payslips_page(request: Request, db: Session = Depends(get_db), month: str = None, filter_by: str = "all"):
+async def send_all_payslips_page(request: Request, db: Session = Depends(get_db), month: str = None, filter_by: str = "all", email_filter: str = None):
     """Page to send all payslips for a specific month. Auto-selects latest month."""
     try:
         current_user = get_current_user_web(request, db)
@@ -1217,13 +1217,14 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
                 emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
                 p.employee = emp
             
-            # Apply filter
-            if filter_by == "with_email":
+            # Apply filter (support both filter_by and email_filter query params)
+            effective_filter = email_filter if email_filter else filter_by
+            if effective_filter == "has_email" or effective_filter == "with_email":
                 payslips = [p for p in payslips if p.employee and p.employee.email]
-            elif filter_by == "no_email":
+            elif effective_filter == "no_email":
                 payslips = [p for p in payslips if not p.employee or not p.employee.email]
         
-                # Get recent email logs
+        # Get recent email logs
         email_logs = []
         try:
             email_logs = db.query(EmailLog).order_by(EmailLog.sent_at.desc()).limit(50).all()
@@ -1237,7 +1238,7 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             "months": months,
             "selected_month": month,
             "filter_by": filter_by,
-        "email_filter": filter_by,
+        "email_filter": email_filter if email_filter else filter_by,
             "payslips": payslips,
             "email_logs": email_logs,
             "smtp_configured": bool(settings.smtp_server and settings.smtp_username),
@@ -2070,12 +2071,16 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
 
     # Send email
     try:
-        success = send_payslip_email(emp.email, emp.name, pdf_path, record.month)
+        success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month)
         if success:
             return JSONResponse(content={"success": True, "message": "Payslip sent to " + emp.email})
         else:
-            return JSONResponse(content={"success": False, "error": "Email sending failed"})
+            print(f"Email send failed for {emp.email}: {error_msg}")
+            return JSONResponse(content={"success": False, "error": error_msg})
     except Exception as e:
+        import traceback
+        print(f"send_single_payslip ERROR: {e}")
+        traceback.print_exc()
         return JSONResponse(content={"success": False, "error": str(e)})
 
 

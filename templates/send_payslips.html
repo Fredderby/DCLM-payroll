@@ -43,7 +43,7 @@
           {% endfor %}
           {% endif %}
         </select>
-        <select class="form-control" style="width: auto; min-width: 120px;" id="filterEmail" onchange="applyFilter()">
+        <select class="form-control" style="width: auto; min-width: 120px;" id="filterEmail">
           <option value="all" {% if email_filter == "all" %}selected{% endif %}>All</option>
           <option value="has_email" {% if email_filter == "has_email" %}selected{% endif %}>Has Email</option>
           <option value="no_email" {% if email_filter == "no_email" %}selected{% endif %}>No Email</option>
@@ -232,5 +232,63 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 });
+</script>
+
+<script>
+// Single send payslip function - provides visual feedback during sending
+function sendSinglePayslip(btn) {
+  var id = btn.getAttribute("data-id");
+  var name = btn.getAttribute("data-name");
+  if (!id) return;
+  var targetName = name || "this employee";
+  if (!confirm("Send payslip to " + targetName + "?")) return;
+  
+  // Disable button and show spinner for visual feedback
+  btn.disabled = true;
+  var originalHTML = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
+  
+  fetch("/payslips/" + id + "/send-single", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  })
+  .then(function(r) {
+    if (!r.ok) {
+      return r.json().then(function(err) { throw new Error(err.error || "Server error"); });
+    }
+    return r.json();
+  })
+  .then(function(data) {
+    if (data.success) {
+      btn.innerHTML = '<i class="fas fa-check"></i> Sent';
+      btn.className = "btn btn-sm btn-success";
+      // Reset after 5 seconds to allow re-sending if needed
+      setTimeout(function() {
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+        btn.className = "btn btn-sm btn-outline-success";
+        btn.disabled = false;
+      }, 5000);
+    } else {
+      btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed';
+      btn.className = "btn btn-sm btn-danger";
+      setTimeout(function() {
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+        btn.className = "btn btn-sm btn-outline-success";
+        btn.disabled = false;
+      }, 3000);
+      alert("Error: " + (data.error || "Sending failed"));
+    }
+  })
+  .catch(function(err) {
+    btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+    btn.className = "btn btn-sm btn-danger";
+    setTimeout(function() {
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+      btn.className = "btn btn-sm btn-outline-success";
+      btn.disabled = false;
+    }, 3000);
+    alert("Network error: " + err.message);
+  });
+}
 </script>
 {% endblock %}

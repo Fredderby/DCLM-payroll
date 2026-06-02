@@ -18,19 +18,18 @@
   if (window.__spaNavInitialized) return;
   window.__spaNavInitialized = true;
 
-    // Force full page reload if coming from login (fresh=true param)
-  // CRITICAL: After login, the auth cookie is set but SPA navigation would cache
-  // the previous page state, causing all buttons/actions to be non-functional.
-  // A full reload ensures all JS initializes fresh with the authenticated context.
+      // Force full page reload when coming from login redirect
+  // This ensures the auth cookie is set and all JS modules initialize correctly.
+  // Without this, SPA caching keeps the pre-login state broken.
   if (window.location.href.indexOf("_fresh=true") !== -1) {
     var cleanUrl = window.location.href.replace(/[?&]_fresh=true/g, "").replace(/&&/g, "&").replace(/\?&/g, "?").replace(/\/\?/g, "/?");
     if (cleanUrl !== window.location.href && cleanUrl.length > 0) {
       window.history.replaceState({}, "", cleanUrl);
     }
-    // Full page reload to ensure all modules reinitialize with auth context
+    // Force browser full reload to ensure all JS initializes fresh
     window.location.reload(true);
     return;
-  }  var contentWrapper = document.querySelector('.content-wrapper');
+  }var contentWrapper = document.querySelector('.content-wrapper');
   if (!contentWrapper) return;
 
   var cache = {};
