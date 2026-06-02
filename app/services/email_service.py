@@ -14,10 +14,9 @@ from email import encoders
 import os
 from app.core.config import settings
 
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT") or "587")
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+# Default SMTP fallback values (Settings from .env takes priority)
+DEFAULT_SMTP_SERVER = "smtp.gmail.com"
+DEFAULT_SMTP_PORT = 587
 FROM_NAME = "DCLM Payroll System"
 
 
@@ -26,11 +25,12 @@ class EmailService:
 
     @staticmethod
     def _get_smtp_settings():
-        """Get SMTP settings from environment variables or settings object"""
-        server = os.getenv("SMTP_SERVER") or getattr(settings, "smtp_server", None) or SMTP_SERVER
-        port = int(os.getenv("SMTP_PORT") or str(getattr(settings, "smtp_port", 587)) or "587")
-        username = os.getenv("SMTP_USERNAME") or getattr(settings, "smtp_username", None) or SMTP_USERNAME
-        password = os.getenv("SMTP_PASSWORD") or getattr(settings, "smtp_password", None) or SMTP_PASSWORD
+        """Get SMTP settings from Settings object (reads .env), with env var fallback."""
+        # Priority: Settings object (from .env) > environment variable > hardcoded default
+        server = getattr(settings, "smtp_server", None) or os.getenv("SMTP_SERVER") or DEFAULT_SMTP_SERVER
+        port = int(getattr(settings, "smtp_port", None) or os.getenv("SMTP_PORT") or DEFAULT_SMTP_PORT)
+        username = getattr(settings, "smtp_username", None) or os.getenv("SMTP_USERNAME") or ""
+        password = getattr(settings, "smtp_password", None) or os.getenv("SMTP_PASSWORD") or ""
         return server, port, username, password
 
     @staticmethod
@@ -72,7 +72,7 @@ DCLM Payroll Management System"""
                     await smtp.login(username, password)
                     await smtp.send_message(message)
             else:
-                async with aiosmtplib.SMTP(hostname=server, port=port, start_tls=False) as smtp:
+                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
                     await smtp.starttls()
                     await smtp.login(username, password)
                     await smtp.send_message(message)
@@ -156,7 +156,7 @@ DCLM Payroll Management System"""
                     await smtp.login(username, password)
                     await smtp.send_message(message)
             else:
-                async with aiosmtplib.SMTP(hostname=server, port=port, start_tls=False) as smtp:
+                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
                     await smtp.starttls()
                     await smtp.login(username, password)
                     await smtp.send_message(message)
@@ -185,7 +185,7 @@ DCLM Payroll Management System"""
                     await smtp.login(username, password)
                     await smtp.send_message(message)
             else:
-                async with aiosmtplib.SMTP(hostname=server, port=port, start_tls=False) as smtp:
+                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
                     await smtp.starttls()
                     await smtp.login(username, password)
                     await smtp.send_message(message)
@@ -203,3 +203,25 @@ DCLM Payroll Management System"""
 async def send_email(to_email: str, subject: str, body: str):
     """Legacy function for backwards compatibility"""
     return await EmailService.send_notification(to_email, subject, body)
+
+
+async def send_payslip_email(recipient_email: str, employee_name: str, pdf_path: str, month: str):
+    """Send a single payslip via email. Top-level function for route handlers to import."""
+    try:
+        from app.models.payroll import PayrollRecord
+        net_salary = 0
+        if pdf_path and os.path.exists(pdf_path):
+            success, message = await EmailService.send_payslip(
+                recipient_email=recipient_email,
+                employee_name=employee_name,
+                month=month or "",
+                pdf_path=pdf_path,
+                net_salary=net_salary
+            )
+        else:
+            print(f"PDF not found for {recipient_email}: {pdf_path}")
+            return False
+        return success
+    except Exception as e:
+        print(f"send_payslip_email error for {recipient_email}: {e}")
+        return False
