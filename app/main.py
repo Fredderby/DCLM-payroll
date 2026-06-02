@@ -52,6 +52,17 @@ def format_month(value):
 templates.env.filters['format_month'] = format_month
 templates.env.filters['tojson'] = tojson_filter
 
+# Initialize database and create indexes on startup
+from app.core.database import init_db
+import asyncio
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application on startup."""
+    # Run database initialization (tables + indexes) in executor to avoid blocking
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, init_db)
+
 # API routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(payroll.router, prefix="/payroll", tags=["Payroll"])
@@ -73,7 +84,8 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
     if user and verify_password(password, user.hashed_password):
         # Create JWT token and set in cookie
         access_token = create_access_token(data={"sub": user.email})
-        response = RedirectResponse(url="/dashboard", status_code=303)
+        # Force fresh load after login to reinitialize all components
+        response = RedirectResponse(url="/dashboard?_fresh=true", status_code=303)
         response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True)
         return response
     template = templates.get_template("login.html")
@@ -132,14 +144,14 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         if cached:
             stats, recent_payslips = cached
         else:
-            # Build stats for the dashboard
-            employee_count = db.query(Employee).count()
-            payslip_count = db.query(PayrollRecord).count()
-            total_payroll = db.query(PayrollRecord).with_entities(PayrollRecord.net_salary).all()
-            total_payroll_sum = sum(p[0] or 0 for p in total_payroll)
+            # Build stats for the dashboard - optimized queries
+            from sqlalchemy import func as sa_func
+            employee_count = db.query(sa_func.count(Employee.id)).scalar() or 0
+            payslip_count = db.query(sa_func.count(PayrollRecord.id)).scalar() or 0
+            total_payroll_sum = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).scalar() or 0
             avg_net_salary = (total_payroll_sum / payslip_count) if payslip_count > 0 else 0
             
-            # Distinct months
+            # Distinct months - optimized
             months = db.query(PayrollRecord.month).distinct().all()
             months_active = len([m[0] for m in months if m[0]])
             
@@ -149,15 +161,17 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
                 "total_payroll": total_payroll_sum,
                 "months_active": months_active,
                 "upload_count": months_active,
-                "avg_net_salary": avg_net_salary,
+                "avg_net_salary": round(avg_net_salary, 2),
                 "email_sent": 0
             }
             
-            # Recent payslips (last 5) with employee details attached
+            # Recent payslips (last 5) - optimized with eager loading
             recent_payslips = db.query(PayrollRecord).order_by(PayrollRecord.id.desc()).limit(5).all()
+            # Use a single query for all employees to avoid N+1
+            employee_names = list(set(p.employee_name for p in recent_payslips))
+            employees = {e.name: e for e in db.query(Employee).filter(Employee.name.in_(employee_names)).all()}
             for p in recent_payslips:
-                emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
-                p.employee_obj = emp
+                p.employee_obj = employees.get(p.employee_name)
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
         
         template = templates.get_template("dashboard.html")
@@ -197,6 +211,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
     from app.services.payroll_service import create_payroll_record
     from app.models.employee import Employee
     from app.models.payroll import PayrollRecord
+    from app.models.upload_history import UploadHistory
     from datetime import datetime, date
     import tempfile
     import os
@@ -207,6 +222,46 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         rendered = template.render({"user": current_user, "error": "Only .xlsx and .csv files allowed"})
         return HTMLResponse(content=rendered, media_type="text/html")
 
+    original_filename = file.filename
+
+    # Auto-detect month from filename if not explicitly provided
+    # Try to extract month patterns like "January 2025", "Jan 2025", "2025-01" from filename
+    if not month:
+        import re
+        month_patterns = [
+            r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})',
+            r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\.?\s*(\d{4})',
+            r'(\d{4})[-/](\d{2})',
+            r'(\d{2})[-/](\d{4})',
+        ]
+        for pattern in month_patterns:
+            match = re.search(pattern, original_filename, re.IGNORECASE)
+            if match:
+                groups = match.groups()
+                if len(groups) == 2:
+                    # Check if first group is a month name
+                    month_names = {'january': 'January', 'february': 'February', 'march': 'March',
+                                   'april': 'April', 'may': 'May', 'june': 'June', 'july': 'July',
+                                   'august': 'August', 'september': 'September', 'october': 'October',
+                                   'november': 'November', 'december': 'December',
+                                   'jan': 'January', 'feb': 'February', 'mar': 'March',
+                                   'apr': 'April', 'jun': 'June', 'jul': 'July', 'aug': 'August',
+                                   'sep': 'September', 'oct': 'October', 'nov': 'November', 'dec': 'December'}
+                    first = groups[0].lower()
+                    if first in month_names:
+                        month = f"{month_names[first]} {groups[1]}"
+                        break
+                    # Check if first is a year
+                    try:
+                        yr = int(groups[0])
+                        if yr > 2000 and yr < 2100:
+                            month_num = int(groups[1])
+                            if 1 <= month_num <= 12:
+                                from datetime import datetime as dt
+                                month = dt(yr, month_num, 1).strftime("%B %Y")
+                                break
+                    except ValueError:
+                        pass
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -220,7 +275,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             from app.core.database import SessionLocal
             db = SessionLocal()
             
-            records = process_payroll_excel(tmp_path, month)
+            records = process_payroll_excel(tmp_path, month, filename=original_filename)
             processed = 0
             errors = []
             unmatched_records = []  # Names that didn't match any registered employee
@@ -366,6 +421,20 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             if missing_emp_ids:
                 missing_emps = db.query(Employee).filter(Employee.id.in_(missing_emp_ids)).order_by(Employee.name).all()
                 missing_employees = [e for e in missing_emps if e.name]
+            
+            # Record upload history
+            try:
+                upload_history = UploadHistory(
+                    file_name=original_filename,
+                    uploaded_by=current_user.id,
+                    month=month,
+                    status="success" if processed > len(errors) else "partial_failure" if processed > 0 else "failed"
+                )
+                db.add(upload_history)
+                db.commit()
+            except Exception as log_err:
+                print(f"Warning: Could not log upload history: {log_err}")
+                db.rollback()
             
             # Build summary
             summary_parts = []
@@ -828,43 +897,47 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         from app.models.payroll import PayrollRecord
         from app.models.employee import Employee
         from app.services.cache_service import get_cache, set_cache
+        from sqlalchemy import func as sa_func
         
-        cache_key = "payslips_data"
-        cached = get_cache(cache_key)
-        if cached:
-            payslips = cached
-            # Re-attach employee info (cache breaks object references)
-            for p in payslips:
-                if hasattr(p, 'employee_id') and p.employee_id:
-                    emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
-                    p.employee = emp
-                else:
-                    emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
-                    p.employee = emp
-        else:
-            # Query payslips
-            payslips = db.query(PayrollRecord).all()
-            # Attach employee names for template
-            for p in payslips:
-                if hasattr(p, 'employee_id') and p.employee_id:
-                    emp = db.query(Employee).filter(Employee.id == p.employee_id).first()
-                    p.employee = emp
-                else:
-                    emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
-                    p.employee = emp
-            set_cache(cache_key, payslips, ttl_seconds=120)
-        
-        # Get distinct months for filter
-        payroll_months = db.query(PayrollRecord.month).distinct().order_by(PayrollRecord.month.desc()).all()
-        months = [m[0] for m in payroll_months if m[0]]
+        # Get distinct months for filter (cached separately)
+        month_cache_key = "payslip_months"
+        months = get_cache(month_cache_key)
+        if not months:
+            payroll_months = db.query(PayrollRecord.month).distinct().order_by(PayrollRecord.month.desc()).all()
+            months = [m[0] for m in payroll_months if m[0]]
+            set_cache(month_cache_key, months, ttl_seconds=300)
         
         selected_month = request.query_params.get("month", "")
+        page = int(request.query_params.get("page", "1"))
+        per_page = 50
         
-        # Generate month-to-date stats
-        total_payslips = len(payslips)
-        total_net_salary = sum(p.net_salary or 0 for p in payslips)
+        # Query with filter and pagination
+        query = db.query(PayrollRecord)
+        if selected_month:
+            query = query.filter(PayrollRecord.month == selected_month)
+        
+        total_payslips = query.count()
+        payslips = query.order_by(PayrollRecord.employee_name).offset((page - 1) * per_page).limit(per_page).all()
+        
+        # Batch-load employee info (N+1 fix)
+        employee_names = list(set(p.employee_name for p in payslips))
+        employees = {}
+        if employee_names:
+            for emp in db.query(Employee).filter(Employee.name.in_(employee_names)).all():
+                employees[emp.name] = emp
+        for p in payslips:
+            p.employee = employees.get(p.employee_name)
+        
+        # Generate stats from filtered records
+        if selected_month:
+            net_total = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).filter(PayrollRecord.month == selected_month).scalar() or 0
+        else:
+            net_total = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).scalar() or 0
+        total_net_salary = float(net_total)
         total_earnings = sum(p.total_earnings or 0 for p in payslips)
         total_deductions = sum(p.total_deductions or 0 for p in payslips)
+        
+        total_pages = max(1, (total_payslips + per_page - 1) // per_page)
         
         template = templates.get_template("payslips.html")
         rendered = template.render({
@@ -873,9 +946,11 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             "months": months,
             "selected_month": selected_month,
             "total_payslips": total_payslips,
-            "total_net_salary": total_net_salary,
-            "total_earnings": total_earnings,
-            "total_deductions": total_deductions,
+            "total_net_salary": round(total_net_salary, 2),
+            "total_earnings": round(total_earnings, 2),
+            "total_deductions": round(total_deductions, 2),
+            "page": page,
+            "total_pages": total_pages,
             "success": request.query_params.get("success"),
             "error": request.query_params.get("error")
         })
@@ -886,6 +961,38 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         template = templates.get_template("payslips.html")
         rendered = template.render({"error": f"Error loading payslips: {str(e)}", "payslips": [], "months": [], "selected_month": ""})
         return HTMLResponse(content=rendered, media_type="text/html")
+
+
+@app.get("/payslips/search")
+async def payslips_search(request: Request, db: Session = Depends(get_db), q: str = "", month: str = "", page: int = 1):
+    """Search payslips with pagination for AJAX calls"""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse(content={"error": "Not authenticated"}, status_code=401)
+    
+    from app.models.payroll import PayrollRecord
+    from sqlalchemy import func as sa_func
+    
+    per_page = 50
+    query = db.query(PayrollRecord)
+    
+    if q:
+        query = query.filter(PayrollRecord.employee_name.like(f"%{q}%"))
+    if month:
+        query = query.filter(PayrollRecord.month == month)
+    
+    total = query.count()
+    records = query.order_by(PayrollRecord.employee_name).offset((page - 1) * per_page).limit(per_page).all()
+    
+    return JSONResponse(content={
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, (total + per_page - 1) // per_page),
+        "records": [{"id": r.id, "employee_name": r.employee_name, "month": r.month, 
+                      "net_salary": r.net_salary, "pdf_generated": r.pdf_generated} for r in records]
+    })
 
 @app.get("/payslips/{payroll_id}/data")
 async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(get_db)):
@@ -1084,17 +1191,22 @@ async def send_payslip_redirect(request: Request, msg: str, msg_type: str = "err
 @app.get("/payslips/send", response_class=HTMLResponse)
 @app.get("/payslips/send-all", response_class=HTMLResponse)
 async def send_all_payslips_page(request: Request, db: Session = Depends(get_db), month: str = None, filter_by: str = "all"):
-    """Page to send all payslips for a specific month"""
+    """Page to send all payslips for a specific month. Auto-selects latest month."""
     try:
         current_user = get_current_user_web(request, db)
         from app.core.config import settings
         from app.models.payroll import PayrollRecord
         from app.models.employee import Employee
         from app.models.email_log import EmailLog
+        from datetime import datetime as dt, timedelta
         
-        # Get list of months with payslips
-        payroll_months = db.query(PayrollRecord.month).distinct().all()
+        # Get list of months with payslips (ordered newest first)
+        payroll_months = db.query(PayrollRecord.month).distinct().order_by(PayrollRecord.month.desc()).all()
         months = [m[0] for m in payroll_months if m[0]]
+        
+        # Auto-detect latest month if none selected
+        if not month and months:
+            month = months[0]
         
         payslips = []
         if month:
@@ -1184,7 +1296,7 @@ async def send_all_payslips(request: Request, month: str = Form(...), db: Sessio
 
 @app.post("/payslips/generate-all", response_class=JSONResponse)
 async def generate_all_payslips(request: Request, month: str = Form(""), db: Session = Depends(get_db)):
-    """Regenerate PDFs for all payslips in a given month (or all months if empty)"""
+    """Generate PDFs for all payslips in a given month, reusing existing files where possible."""
     from app.models.payroll import PayrollRecord
     from app.services.pdf_service import generate_payslip_pdf
     import os
@@ -1195,12 +1307,19 @@ async def generate_all_payslips(request: Request, month: str = Form(""), db: Ses
         records = db.query(PayrollRecord).all()
         month = "All Months"
     if not records:
-        return {"success": False, "message": f"No payslips found for {month}"}
+        return JSONResponse(content={"success": False, "message": f"No payslips found for {month}"})
     
     generated = 0
+    reused = 0
     failed = 0
     for r in records:
         try:
+            # Reuse existing PDF if it exists and is valid
+            existing_path = r.pdf_generated if hasattr(r, 'pdf_generated') else None
+            if existing_path and os.path.exists(existing_path):
+                reused += 1
+                continue
+            
             pdf_path = generate_payslip_pdf(db, r.id)
             if pdf_path:
                 r.pdf_generated = pdf_path
@@ -1211,31 +1330,37 @@ async def generate_all_payslips(request: Request, month: str = Form(""), db: Ses
             failed += 1
     db.commit()
     
-    return {"success": True, "message": f"Generated {generated} PDF(s) for {month}. Failed: {failed}"}
+    message = f"Generated {generated} new PDF(s), reused {reused} existing. Failed: {failed}."
+    return JSONResponse(content={"success": True, "message": message})
 
 
 @app.post("/payslips/{payroll_id}/generate-pdf", response_class=JSONResponse)
 @app.post("/payslips/generate-single/{payroll_id}", response_class=JSONResponse)
 async def generate_single_payslip(payroll_id: int, db: Session = Depends(get_db)):
-    """Regenerate PDF for a single payslip"""
+    """Generate PDF for a single payslip. Reuses existing file if available."""
     from app.models.payroll import PayrollRecord
     from app.services.pdf_service import generate_payslip_pdf
     import os
     
     r = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
     if not r:
-        return {"success": False, "message": "Payslip not found"}
+        return JSONResponse(content={"success": False, "message": "Payslip not found"}, status_code=404)
+    
+    # Check if existing PDF is still valid
+    existing_path = r.pdf_generated if hasattr(r, 'pdf_generated') else None
+    if existing_path and os.path.exists(existing_path):
+        return JSONResponse(content={"success": True, "message": "PDF already exists", "path": existing_path})
     
     try:
         pdf_path = generate_payslip_pdf(db, r.id)
         if pdf_path:
             r.pdf_generated = pdf_path
             db.commit()
-            return {"success": True, "message": "PDF generated successfully"}
+            return JSONResponse(content={"success": True, "message": "PDF generated successfully", "path": pdf_path})
         else:
-            return {"success": False, "message": "PDF generation failed"}
+            return JSONResponse(content={"success": False, "message": "PDF generation failed"}, status_code=500)
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
 
 
 
@@ -1657,14 +1782,160 @@ async def reports_page(request: Request, db: Session = Depends(get_db)):
                 })
         set_cache(cache_key, (stats, monthly_data), ttl_seconds=120)
     
+    # Build month list for template
+    months_list = [m["month"] for m in monthly_data]
+    
     template = templates.get_template("reports.html")
     rendered = template.render({
         "user": current_user,
         "stats": stats,
+        "employees_count": stats["total_employees"],
+        "months": months_list,
+        "total_payroll": round(stats["total_payroll"], 2),
+        "payslip_count": stats["total_records"],
         "monthly_data": monthly_data,
         "error": None
     })
     return HTMLResponse(content=rendered, media_type="text/html")
+
+
+# === REPORT GENERATION ===
+@app.post("/reports/generate")
+async def generate_report(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    form = await request.form()
+    report_type = form.get("type", "payroll_summary")
+    month = form.get("month", "")
+    fmt = form.get("format", "excel")
+    
+    from app.models.payroll import PayrollRecord
+    from app.models.employee import Employee
+    from app.services.cache_service import get_cache, set_cache
+    
+    # Query payroll records
+    query = db.query(PayrollRecord)
+    if month:
+        query = query.filter(PayrollRecord.month == month)
+    records = query.order_by(PayrollRecord.employee_name).all()
+    
+    if fmt == "excel":
+        import pandas as pd
+        import io
+        from openpyxl import Workbook
+        
+        output = io.BytesIO()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = report_type.replace("_", " ").title()
+        
+        if report_type == "payroll_summary":
+            headers = ["Employee", "Month", "Basic Salary", "Meals", "Responsibility Allowance", "COLA",
+                       "Leave Allowance", "Total Earnings", "PAYE", "Tithe", "Future Savings",
+                       "Other Deductions", "Total Deductions", "Net Salary"]
+            ws.append(headers)
+            for r in records:
+                ws.append([r.employee_name, r.month, r.basic_salary, r.meals_monthly, r.responsibility_allowance,
+                          r.cola, r.leave_allowance, r.total_earnings, r.paye, r.tithe, r.future_savings,
+                          r.other_deductions, r.total_deductions, r.net_salary])
+        elif report_type == "employee_list":
+            employees = db.query(Employee).order_by(Employee.name).all()
+            headers = ["Name", "Email", "Employee Number", "Designation", "Location", "Bank", "Bank Number"]
+            ws.append(headers)
+            for e in employees:
+                ws.append([e.name, e.email, e.employee_number, e.designation or e.function, e.location, e.bank_name, e.bank_number])
+        elif report_type == "deductions":
+            headers = ["Employee", "Month", "PAYE", "Tithe", "Future Savings", "Other Deductions", "Total Deductions"]
+            ws.append(headers)
+            for r in records:
+                ws.append([r.employee_name, r.month, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
+        elif report_type == "bank_payments":
+            headers = ["Employee", "Bank", "Bank Number", "Net Salary", "Month"]
+            ws.append(headers)
+            for r in records:
+                emp = db.query(Employee).filter(Employee.name == r.employee_name).first()
+                ws.append([r.employee_name, emp.bank_name if emp else "", emp.bank_number if emp else "", r.net_salary, r.month])
+        else:
+            headers = ["Employee", "Month", "Basic Salary", "Total Earnings", "Total Deductions", "Net Salary"]
+            ws.append(headers)
+            for r in records:
+                ws.append([r.employee_name, r.month, r.basic_salary, r.total_earnings, r.total_deductions, r.net_salary])
+        
+        wb.save(output)
+        output.seek(0)
+        filename = f"{report_type}_{month or 'all'}.xlsx"
+        return Response(content=output.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"})
+    else:
+        # CSV format
+        import csv
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        if report_type == "payroll_summary":
+            writer.writerow(["Employee", "Month", "Basic Salary", "Total Earnings", "Total Deductions", "Net Salary"])
+            for r in records:
+                writer.writerow([r.employee_name, r.month, r.basic_salary, r.total_earnings, r.total_deductions, r.net_salary])
+        elif report_type == "employee_list":
+            employees = db.query(Employee).order_by(Employee.name).all()
+            writer.writerow(["Name", "Email", "Employee Number", "Designation"])
+            for e in employees:
+                writer.writerow([e.name, e.email, e.employee_number, e.designation])
+        elif report_type == "deductions":
+            writer.writerow(["Employee", "Month", "PAYE", "Tithe", "Future Savings", "Total Deductions"])
+            for r in records:
+                writer.writerow([r.employee_name, r.month, r.paye, r.tithe, r.future_savings, r.total_deductions])
+        elif report_type == "bank_payments":
+            writer.writerow(["Employee", "Bank", "Bank Number", "Net Salary", "Month"])
+            for r in records:
+                emp = db.query(Employee).filter(Employee.name == r.employee_name).first()
+                writer.writerow([r.employee_name, emp.bank_name if emp else "", emp.bank_number if emp else "", r.net_salary, r.month])
+        else:
+            writer.writerow(["Employee", "Month", "Basic Salary", "Total Earnings", "Total Deductions", "Net Salary"])
+            for r in records:
+                writer.writerow([r.employee_name, r.month, r.basic_salary, r.total_earnings, r.total_deductions, r.net_salary])
+        
+        output.seek(0)
+        filename = f"{report_type}_{month or 'all'}.csv"
+        return Response(content=output.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@app.get("/reports/month-summary")
+async def month_summary(request: Request, month: str = "", db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    
+    if not month:
+        return JSONResponse({"error": "Month parameter required"}, status_code=400)
+    
+    from app.models.payroll import PayrollRecord
+    from sqlalchemy import func
+    
+    try:
+        records = db.query(PayrollRecord).filter(PayrollRecord.month == month).all()
+        count = len(records)
+        total_net = sum(r.net_salary or 0 for r in records)
+        total_deductions = sum(r.total_deductions or 0 for r in records)
+        total_earnings = sum(r.total_earnings or 0 for r in records)
+        avg_net = round(total_net / count, 2) if count > 0 else 0
+        
+        return JSONResponse({
+            "month": month,
+            "count": count,
+            "total_net": round(total_net, 2),
+            "total_earnings": round(total_earnings, 2),
+            "total_deductions": round(total_deductions, 2),
+            "avg_net": avg_net
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # === UPLOAD HISTORY ===
@@ -1675,29 +1946,55 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
     except HTTPException:
         return RedirectResponse(url="/login", status_code=303)
     
-    from app.models.upload_history import UploadHistory
+    try:
+        from app.models.upload_history import UploadHistory
+    except ImportError:
+        template = templates.get_template("upload_history.html")
+        rendered = template.render({
+            "user": current_user,
+            "uploads": [],
+            "error": "Upload history module not available. Please run database migrations."
+        })
+        return HTMLResponse(content=rendered, media_type="text/html")
+    
     from app.services.cache_service import get_cache, set_cache
     
     cache_key = "upload_hist"
     cached = get_cache(cache_key)
     if cached:
-        uploads = cached
+        uploads_list = cached
     else:
         try:
-            uploads = db.query(UploadHistory).order_by(UploadHistory.timestamp.desc()).all()
-        except:
-            uploads = db.query(UploadHistory).all()
+            uploads = db.query(UploadHistory).order_by(UploadHistory.id.desc()).limit(500).all()
+        except Exception as e:
+            template = templates.get_template("upload_history.html")
+            rendered = template.render({
+                "user": current_user,
+                "uploads": [],
+                "error": f"Database error: {str(e)[:100]}"
+            })
+            return HTMLResponse(content=rendered, media_type="text/html")
         
-        # If timestamp is missing, use created_at as fallback
+        # Convert to serializable format for template
+        uploads_list = []
         for u in uploads:
-            if not u.timestamp and hasattr(u, 'created_at'):
-                u.timestamp = u.created_at
-        set_cache(cache_key, uploads, ttl_seconds=120)
+            ts = getattr(u, 'created_at', None) or getattr(u, 'timestamp', None)
+            
+            uploads_list.append({
+                "id": u.id,
+                "file_name": u.file_name,
+                "uploaded_by": u.uploaded_by,
+                "month": u.month,
+                "status": u.status,
+                "timestamp": ts
+            })
+        
+        set_cache(cache_key, uploads_list, ttl_seconds=120)
     
     template = templates.get_template("upload_history.html")
     rendered = template.render({
         "user": current_user,
-        "uploads": uploads,
+        "uploads": uploads_list,
         "error": None
     })
     return HTMLResponse(content=rendered, media_type="text/html")

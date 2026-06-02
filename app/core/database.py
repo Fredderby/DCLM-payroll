@@ -44,3 +44,35 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def init_db():
+    """Create all tables and performance indexes."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created/verified.")
+    except Exception as e:
+        logger.warning(f"Could not create tables (non-critical): {e}")
+    
+    try:
+        conn = engine.connect()
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_payroll_month ON payroll_records(month);
+            CREATE INDEX IF NOT EXISTS idx_payroll_employee_name ON payroll_records(employee_name);
+            CREATE INDEX IF NOT EXISTS idx_payroll_month_employee ON payroll_records(month, employee_name);
+            CREATE INDEX IF NOT EXISTS idx_employee_name ON employees(name);
+            CREATE INDEX IF NOT EXISTS idx_employee_email ON employees(email);
+            CREATE INDEX IF NOT EXISTS idx_employee_number ON employees(employee_number);
+            CREATE INDEX IF NOT EXISTS idx_upload_created_at ON upload_history(created_at);
+            CREATE INDEX IF NOT EXISTS idx_upload_month ON upload_history(month);
+        """))
+        conn.commit()
+        conn.close()
+        logger.info("Performance indexes created/verified.")
+    except Exception as e:
+        logger.warning(f"Could not create indexes (non-critical): {e}")
+
+# Import text for raw SQL
+from sqlalchemy import text

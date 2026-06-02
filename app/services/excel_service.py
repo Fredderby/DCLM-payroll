@@ -12,13 +12,28 @@ def normalize_col(name: str) -> str:
     return name.strip('_')
 
 
-def process_payroll_excel(file_path: str, month: str = None):
+def process_payroll_excel(file_path: str, month: str = None, filename: str = ""):
     """
     Process payroll Excel file with flexible column mapping.
     Supports various column names and extracts payroll data.
+    Auto-detects month from filename if not provided.
     """
-    df = pd.read_excel(file_path)
-
+    if month is None and filename:
+        # Auto-detect month from filename
+        import re as _re
+        month_patterns = [
+            (r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', lambda m: f"{m.group(1)} {m.group(2)}"),
+            (r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*\.?\s*(\d{4})', 
+             lambda m: {'Jan':'January','Feb':'February','Mar':'March','Apr':'April','May':'May','Jun':'June',
+                        'Jul':'July','Aug':'August','Sep':'September','Oct':'October','Nov':'November','Dec':'December'}.get(m.group(1).capitalize(), m.group(1)) + f" {m.group(2)}"),
+            (r'(\d{4})[-/_](\d{2})', lambda m: datetime(int(m.group(1)), int(m.group(2)), 1).strftime("%B %Y")),
+        ]
+        for pattern, formatter in month_patterns:
+            match = _re.search(pattern, filename, _re.IGNORECASE)
+            if match:
+                month = formatter(match)
+                break
+    
     if month is None:
         month = datetime.now().strftime("%B %Y")
 

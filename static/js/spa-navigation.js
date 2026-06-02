@@ -1,8 +1,14 @@
 /**
- * DCLM Payroll - SPA Navigation System v5
- * Smooth page transitions via fetch + history.pushState
- * Leaves sidebar intact - swaps only content area
- * Now captures extra styles/scripts from outside content-wrapper
+ * DCLM Payroll - SPA Navigation System v6
+ * 
+ * KEY FIXES:
+ * 1. Force full page reload on login redirect (`_fresh=true`)
+ * 2. Re-executes ALL scripts from loaded content (fixes post-login button activation)
+ * 3. Properly re-binds inline event handlers (onclick, onsubmit, etc.)
+ * 4. Reinitializes page-specific JavaScript after content swap
+ * 5. Loads extra scripts from head that aren't already loaded
+ * 6. Fires events for other modules to reinitialize
+ * 7. Handles forms with inline onsubmit properly
  */
 
 (function() {
@@ -12,16 +18,60 @@
   if (window.__spaNavInitialized) return;
   window.__spaNavInitialized = true;
 
+  // Force full page reload if coming from login (fresh=true param)
+  if (window.location.search.indexOf('_fresh=true') !== -1 || window.location.href.indexOf('_fresh=true') !== -1) {
+    // Remove the param from URL to prevent loops, but let page fully load
+    var cleanUrl = window.location.href.replace(/[?&]_fresh=true/g, '').replace(/&&/g, '&').replace(/\?&/g, '?');
+    if (cleanUrl !== window.location.href) {
+      window.history.replaceState({}, '', cleanUrl);
+    }
+    // Run initialization after full page load
+    if (document.readyState === 'complete') {
+      setTimeout(function() {
+        if (window.updateActiveNavTab) window.updateActiveNavTab();
+        if (window.runSpaHooks) window.runSpaHooks();
+      }, 100);
+    } else {
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+          if (window.updateActiveNavTab) window.updateActiveNavTab();
+          if (window.runSpaHooks) window.runSpaHooks();
+        }, 100);
+      });
+    }
+  }
+
   var contentWrapper = document.querySelector('.content-wrapper');
   if (!contentWrapper) return;
 
   var cache = {};
   var isLoading = false;
 
+  // Global hook system for SPA reinitialization
+  window.__spaHooks = window.__spaHooks || [];
+  window.addSpaHook = function(fn) { window.__spaHooks.push(fn); };
+  window.runSpaHooks = function() {
+    var hooks = window.__spaHooks.slice();
+    hooks.forEach(function(fn) {
+      try { fn(); } catch(e) { console.warn('SPA hook error:', e); }
+    });
+    // Re-bind menu-tabs active state
+    if (window.updateActiveNavTab) {
+      try { window.updateActiveNavTab(); } catch(e) {}
+    }
+  };
+
   // Expose navigateTo globally
   window.navigateTo = function(url, options) {
     options = options || {};
     if (isLoading) return;
+
+    // Force full reload on _fresh=true (login redirect)
+    if (url.indexOf('_fresh=true') !== -1) {
+      window.location.href = url;
+      return;
+    }
+
     if (url === window.location.pathname && !options.force) return;
 
     isLoading = true;
@@ -36,6 +86,7 @@
       isLoading = false;
       showLoading(false);
       updateActiveNav(fullUrl);
+      runSpaHooks();
       return;
     }
 
@@ -44,7 +95,6 @@
     })
     .then(function(res) {
       if (!res.ok) {
-        // Fallback: full page reload
         window.location.href = fullUrl;
         throw new Error('Fetch failed');
       }
@@ -68,26 +118,23 @@
     });
   };
 
+  /**
+   * Apply fetched HTML content to the page
+   * CRITICAL: Must re-bind ALL scripts and event handlers
+   */
   function applyContent(html, url) {
-    // Extract the content from fetched page
     var temp = document.createElement('div');
     temp.innerHTML = html;
 
     // Find the content-wrapper in fetched page
     var newContent = temp.querySelector('.content-wrapper');
     if (!newContent) {
-      // Fallback: try to find main-content
       newContent = temp.querySelector('.main-content');
     }
     if (!newContent) {
-      // Last fallback: use body content
       newContent = temp.querySelector('body');
     }
     if (!newContent) return;
-
-    // Remove navigation mount point if present (legacy)
-    var navMount = newContent.querySelector('#navigation-mount');
-    if (navMount) navMount.remove();
 
     // Capture extra inline styles/scripts from throughout the fetched page
     var extraCssBlocks = [];
@@ -95,7 +142,6 @@
 
     var allExtraStyles = temp.querySelectorAll('style');
     allExtraStyles.forEach(function(s) {
-      // Only take styles that aren't inside the new content
       if (!newContent.contains(s)) {
         extraCssBlocks.push(s.textContent);
       }
@@ -103,7 +149,6 @@
 
     var allExtraScripts = temp.querySelectorAll('script');
     allExtraScripts.forEach(function(s) {
-      // Only take scripts that aren't inside the new content
       if (!newContent.contains(s)) {
         if (s.src) {
           extraScriptsToLoad.push(s.src);
@@ -116,14 +161,67 @@
     // Replace current content
     contentWrapper.innerHTML = newContent.innerHTML;
 
-    // Inject extra styles from the fetched page into the document head
+    // ═══════════════════════════════════════════════
+    // CRITICAL: Re-execute ALL inline scripts
+    // ═══════════════════════════════════════════════
+    var allScripts = contentWrapper.querySelectorAll('script');
+    allScripts.forEach(function(oldScript) {
+      var newScript = document.createElement('script');
+      if (oldScript.src) {
+        newScript.src = oldScript.src;
+        newScript.async = false;
+      }
+      if (oldScript.textContent) {
+        newScript.textContent = oldScript.textContent;
+      }
+      newScript.async = false;
+      oldScript.parentNode.replaceChild(newScript, oldScript);
+    });
+
+    // ═══════════════════════════════════════════════
+    // CRITICAL: Re-bind inline event handlers
+    // ═══════════════════════════════════════════════
+    var forms = contentWrapper.querySelectorAll('form[onsubmit]');
+    forms.forEach(function(form) {
+      var handlerCode = form.getAttribute('onsubmit');
+      if (handlerCode) {
+        form.removeAttribute('onsubmit');
+        form.addEventListener('submit', function(e) {
+          try { return eval(handlerCode); } catch(err) { return true; }
+        });
+      }
+    });
+
+    var clickElements = contentWrapper.querySelectorAll('[onclick]');
+    clickElements.forEach(function(el) {
+      var handlerCode = el.getAttribute('onclick');
+      if (handlerCode) {
+        el.removeAttribute('onclick');
+        el.addEventListener('click', function(e) {
+          try { return eval(handlerCode); } catch(err) {}
+        });
+      }
+    });
+
+    var changeElements = contentWrapper.querySelectorAll('[onchange]');
+    changeElements.forEach(function(el) {
+      var handlerCode = el.getAttribute('onchange');
+      if (handlerCode) {
+        el.removeAttribute('onchange');
+        el.addEventListener('change', function(e) {
+          try { return eval(handlerCode); } catch(err) {}
+        });
+      }
+    });
+
+    // Inject extra styles
     extraCssBlocks.forEach(function(css) {
       var styleTag = document.createElement('style');
       styleTag.textContent = css;
       document.head.appendChild(styleTag);
     });
 
-    // Load extra scripts from the fetched page (deduped)
+    // Load extra scripts (deduped)
     extraScriptsToLoad.forEach(function(src) {
       if (!document.querySelector('script[src="' + src + '"]')) {
         var ns = document.createElement('script');
@@ -133,27 +231,19 @@
       }
     });
 
-    // ─── Update page header (title, subtitle, actions) ───
+    // ─── Update page header ───
     var headerEl = document.querySelector('.top-header');
     if (headerEl) {
       var newHeader = temp.querySelector('.top-header');
       if (newHeader) {
         var titleEl = headerEl.querySelector('.page-title');
         var newTitleEl = newHeader.querySelector('.page-title');
-        if (titleEl && newTitleEl) {
-          titleEl.textContent = newTitleEl.textContent;
-        }
-        var parentDiv = headerEl.querySelector('.top-header-left > div');
-        var newParentDiv = newHeader.querySelector('.top-header-left > div');
-        if (parentDiv && newParentDiv) {
-          var title = parentDiv.querySelector('.page-title');
-          parentDiv.innerHTML = newParentDiv.innerHTML;
-        }
+        if (titleEl && newTitleEl) titleEl.textContent = newTitleEl.textContent;
+
         var actionsEl = headerEl.querySelector('.top-header-right');
         var newActionsEl = newHeader.querySelector('.top-header-right');
         if (actionsEl && newActionsEl) {
           actionsEl.innerHTML = newActionsEl.innerHTML;
-          // Re-execute scripts in actions area
           actionsEl.querySelectorAll('script').forEach(function(s) {
             var ns = document.createElement('script');
             if (s.src) ns.src = s.src;
@@ -161,61 +251,35 @@
             ns.async = false;
             s.parentNode.replaceChild(ns, s);
           });
+          var actionClickEls = actionsEl.querySelectorAll('[onclick]');
+          actionClickEls.forEach(function(el) {
+            var handlerCode = el.getAttribute('onclick');
+            if (handlerCode) {
+              el.removeAttribute('onclick');
+              el.addEventListener('click', function(e) { try { return eval(handlerCode); } catch(err) {} });
+            }
+          });
         }
       }
     }
 
-    // Re-execute any scripts inside the new content
-    reExecuteScripts(contentWrapper);
+    // Dispatch custom events for page-specific initializers
+    document.dispatchEvent(new CustomEvent('spa-content-loaded', { detail: { url: url } }));
+    document.dispatchEvent(new CustomEvent('content-loaded', { detail: { url: url } }));
 
-    // Re-init Bootstrap tooltips/popovers if needed
-    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
-      var tooltips = [].slice.call(contentWrapper.querySelectorAll('[data-bs-toggle="tooltip"]'));
-      tooltips.forEach(function(el) { new bootstrap.Tooltip(el); });
-    }
+    // Run all registered SPA hooks
+    setTimeout(runSpaHooks, 10);
 
-    // Dispatch custom event for page-specific initializers
-    var event = new CustomEvent('spa-content-loaded', { detail: { url: url } });
-    document.dispatchEvent(event);
-
-    // Scroll to top
     window.scrollTo(0, 0);
-  }
-
-  function reExecuteScripts(container) {
-    var scripts = container.querySelectorAll('script');
-    scripts.forEach(function(oldScript) {
-      var newScript = document.createElement('script');
-      if (oldScript.src) {
-        newScript.src = oldScript.src;
-      } else {
-        newScript.textContent = oldScript.textContent;
-      }
-      newScript.async = false;
-      oldScript.parentNode.replaceChild(newScript, oldScript);
-    });
   }
 
   function updateActiveNav(url) {
     var path = url.replace(window.location.origin, '').split('?')[0];
-    var navLinks = document.querySelectorAll('[data-nav-link]');
-    navLinks.forEach(function(link) {
+    document.querySelectorAll('[data-nav-link]').forEach(function(link) {
       var href = link.getAttribute('href');
-      if (href === path) {
-        link.classList.add('active');
-      } else {
-        link.classList.remove('active');
-      }
+      link.classList.toggle('active', href === path);
     });
-
-    // Update document title
-    var navItem = document.querySelector('[data-nav-link].active');
-    if (navItem) {
-      var label = navItem.querySelector('.nav-label');
-      if (label) {
-        document.title = label.textContent.trim() + ' - DCLM Payroll';
-      }
-    }
+    if (window.updateActiveNavTab) window.updateActiveNavTab();
   }
 
   function showLoading(visible) {
@@ -231,46 +295,58 @@
       bar.style.opacity = '1';
     } else {
       bar.style.width = '100%';
-      setTimeout(function() {
-        bar.style.opacity = '0';
-        setTimeout(function() {
-          bar.style.width = '0';
-        }, 300);
-      }, 200);
+      setTimeout(function() { bar.style.opacity = '0'; setTimeout(function() { bar.style.width = '0'; }, 300); }, 200);
     }
   }
 
-  // Intercept link clicks
+  // Single click handler for navigation
   document.addEventListener('click', function(e) {
-    var link = e.target.closest('a[data-nav-link]');
-    if (!link) {
-      // Also handle regular links to app pages
-      link = e.target.closest('a[href]');
-      if (!link) return;
-      var href = link.getAttribute('href');
-      if (!href) return;
-      // Skip external, anchors, download, logout, login
-      if (href.startsWith('http') && !href.startsWith(window.location.origin)) return;
-      if (href.startsWith('#') || href.startsWith('javascript:') || href === '/logout' || href.startsWith('/login')) return;
-      if (link.hasAttribute('download') || link.target === '_blank') return;
-      if (href.startsWith('mailto:') || href.startsWith('tel:')) return;
-    }
+    var link = e.target.closest('a[href]');
+    if (!link || e.defaultPrevented) return;
+    var href = link.getAttribute('href');
+    if (!href) return;
+
+    // Skip special links
+    if (href.startsWith('http') && !href.startsWith(window.location.origin)) return;
+    if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+    if (link.hasAttribute('download') || link.target === '_blank') return;
+
+    // Always do full navigation to login/logout
+    if (href === '/logout' || href.startsWith('/login')) return;
+
+    // Skip form actions
+    if (link.closest('form')) return;
+    if (link.getAttribute('role') === 'button') return;
+
+    // Skip if href is an API endpoint or action endpoint
+    if (href.includes('/delete') || href.includes('/generate') || href.includes('/send') || href.includes('/upload') || href.includes('/test')) return;
 
     e.preventDefault();
-    var url = link.getAttribute('href');
-    if (url) {
-      window.navigateTo(url, { replace: url === window.location.pathname });
-    }
+    navigateTo(href);
   });
 
-  // Handle browser back/forward
+  // Handle back/forward navigation
   window.addEventListener('popstate', function(e) {
     if (e.state && e.state.url) {
-      window.navigateTo(e.state.url, { replace: true });
+      navigateTo(e.state.url, { replace: true });
     }
   });
 
-  // Mark initial page
-  updateActiveNav(window.location.pathname);
+  // Expose functions globally
+  window.spaNavigate = navigateTo;
 
+  // Run initialization on first load
+  function onReady() {
+    if (window.updateActiveNavTab) {
+      window.updateActiveNavTab();
+      window.addSpaHook(window.updateActiveNavTab);
+    }
+    setTimeout(runSpaHooks, 50);
+  }
+
+  if (document.readyState === 'complete') {
+    setTimeout(onReady, 50);
+  } else {
+    document.addEventListener('DOMContentLoaded', onReady);
+  }
 })();

@@ -34,13 +34,27 @@
       {% for u in uploads %}
       <tr>
         <td><strong>{{ u.file_name or 'N/A' }}</strong></td>
-        <td style="font-size: 13px;">{{ u.timestamp.strftime("%b %d, %Y %I:%M %p") if u.timestamp else 'N/A' }}</td>
+        <td style="font-size: 13px;">
+          {% if u.timestamp %}
+            {% if u.timestamp is string %}
+              {{ u.timestamp }}
+            {% elif u.timestamp.strftime is defined %}
+              {{ u.timestamp.strftime("%b %d, %Y %I:%M %p") }}
+            {% else %}
+              {{ u.timestamp }}
+            {% endif %}
+          {% else %}
+            N/A
+          {% endif %}
+        </td>
         <td>
           {% set status = (u.status or '').lower() %}
           {% if status in ('completed', 'success') %}
           <span class="badge badge-success">Completed</span>
           {% elif status in ('failed', 'error') %}
           <span class="badge badge-danger">Failed</span>
+          {% elif status in ('partial_failure',) %}
+          <span class="badge badge-warning">Partial</span>
           {% else %}
           <span class="badge badge-warning">{{ u.status or 'Pending' }}</span>
           {% endif %}
