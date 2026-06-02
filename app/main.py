@@ -171,7 +171,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             employee_names = list(set(p.employee_name for p in recent_payslips))
             employees = {e.name: e for e in db.query(Employee).filter(Employee.name.in_(employee_names)).all()}
             for p in recent_payslips:
-                p.employee = emp  # Use p.employee for template access (email, etc.)loyees.get(p.employee_name)
+                p.employee = employees.get(p.employee_name)
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
         
         template = templates.get_template("dashboard.html")
@@ -1215,7 +1215,7 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             # Attach employee info to each payslip
             for p in payslips:
                 emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
-                p.employee = emp  # Use p.employee for template access (email, etc.)
+                p.employee = emp
             
             # Apply filter
             if filter_by == "with_email":
