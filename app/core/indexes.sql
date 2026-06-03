@@ -31,3 +31,26 @@ CREATE INDEX IF NOT EXISTS idx_email_employee ON email_log(employee_email);
 -- Users Indexes
 CREATE INDEX IF NOT EXISTS idx_user_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);
+
+-- ============================================================
+-- Schema Migration: Add new columns for staff_category and non-pastoral fields
+-- Run after code deployment
+-- ============================================================
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS staff_category VARCHAR(20) DEFAULT 'pastoral';
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS rent_monthly FLOAT DEFAULT 0;
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS utility_monthly FLOAT DEFAULT 0;
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS transport_monthly FLOAT DEFAULT 0;
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS employee_pf FLOAT DEFAULT 0;
+
+ALTER TABLE payroll_records
+  ADD COLUMN IF NOT EXISTS ssnit_deduction FLOAT DEFAULT 0;

@@ -34,6 +34,39 @@ Base.metadata.create_all(bind=engine)
 print('Database tables verified successfully.')
 " || echo "WARNING: Database tables could not be created. App will still start."
 
+# 4. Run schema migrations for new columns
+echo "Running schema migrations..."
+python -c "
+from app.core.database import engine
+import sqlalchemy as sa
+
+migrations = [
+    (\"staff_category\", \"ALTER TABLE payroll_records ADD COLUMN staff_category VARCHAR(20) DEFAULT 'pastoral'\"),
+    (\"rent_monthly\", \"ALTER TABLE payroll_records ADD COLUMN rent_monthly FLOAT DEFAULT 0\"),
+    (\"utility_monthly\", \"ALTER TABLE payroll_records ADD COLUMN utility_monthly FLOAT DEFAULT 0\"),
+    (\"transport_monthly\", \"ALTER TABLE payroll_records ADD COLUMN transport_monthly FLOAT DEFAULT 0\"),
+    (\"employee_pf\", \"ALTER TABLE payroll_records ADD COLUMN employee_pf FLOAT DEFAULT 0\"),
+    (\"ssnit_deduction\", \"ALTER TABLE payroll_records ADD COLUMN ssnit_deduction FLOAT DEFAULT 0\"),
+]
+
+with engine.connect() as conn:
+    # Check existing columns
+    result = conn.execute(sa.text('SHOW COLUMNS FROM payroll_records'))
+    existing = [row[0] for row in result]
+    
+    for col_name, alter_sql in migrations:
+        if col_name not in existing:
+            try:
+                conn.execute(sa.text(alter_sql))
+                conn.commit()
+                print(f'  + Added column: {col_name}')
+            except Exception as e:
+                conn.rollback()
+                print(f'  - Could not add {col_name}: {e}')
+        else:
+            print(f'  ✓ Column exists: {col_name}')
+" 2>&1 || echo "WARNING: Migration partially failed. Some columns may not have been added."
+
 echo "=== Pre-start complete. Starting application... ==="
 
 # 4. Start the application with uvicorn
