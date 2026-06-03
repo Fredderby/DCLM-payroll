@@ -46,7 +46,7 @@ def upload_payroll(file: UploadFile = File(...), current_user: User = Depends(ge
                     db.commit()
                     db.refresh(employee)
                 
-                create_payroll_record(db, employee.id, record)
+                create_payroll_record(db, employee, record)
                 processed += 1
             except Exception as e:
                 errors.append(f"Error processing {record.get('employee_name', 'Unknown')}: {str(e)}")

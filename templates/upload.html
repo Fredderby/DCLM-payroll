@@ -48,21 +48,56 @@
   </div>
 
   <div class="col-lg-4">
+    <!-- Template Downloads Card -->
+    <div class="card mb-3">
+      <div class="card-header">
+        <h4><i class="fas fa-download"></i> Payroll Template Downloads</h4>
+      </div>
+      <div class="card-body" style="font-size: 14px; color: var(--text-secondary);">
+        <p style="margin-bottom: 12px; font-weight: 500; color: var(--text-primary, #333);">
+          Download the appropriate template for your staff category:
+        </p>
+
+        <div class="d-grid gap-2 mb-3">
+          <a href="/upload/template/pastoral" class="btn btn-outline-primary btn-sm text-start d-flex align-items-center gap-2" style="padding: 10px 14px; white-space: normal;">
+            <div>
+              <i class="fas fa-user-tie fa-lg" style="width: 24px;"></i>
+            </div>
+            <div>
+              <strong>Pastoral Payroll Template</strong><br>
+              <small>For Pastoral staff: Basic Salary, Allowances, Deductions</small>
+            </div>
+          </a>
+          <a href="/upload/template/non-pastoral" class="btn btn-outline-success btn-sm text-start d-flex align-items-center gap-2" style="padding: 10px 14px; white-space: normal;">
+            <div>
+              <i class="fas fa-user-friends fa-lg" style="width: 24px;"></i>
+            </div>
+            <div>
+              <strong>Non-Pastoral Payroll Template</strong><br>
+              <small>For Non-Pastoral staff: Basic Salary, Rent, Utility, etc.</small>
+            </div>
+          </a>
+        </div>
+
+        <hr>
+        <p style="font-size: 12px; margin-top: 8px; margin-bottom: 0;">
+          <i class="fas fa-info-circle"></i> The system automatically detects which template you upload. Ensure you use the correct template for each staff category.
+        </p>
+      </div>
+    </div>
+
     <div class="card mb-3">
       <div class="card-header">
         <h4><i class="fas fa-info-circle"></i> Instructions</h4>
       </div>
       <div class="card-body" style="font-size: 14px; color: var(--text-secondary);">
         <ol style="padding-left: 20px; display: flex; flex-direction: column; gap: 8px;">
-          <li>Download the sample payroll template</li>
+          <li>Download the appropriate template above</li>
           <li>Fill in employee payroll data</li>
           <li>Select the payroll month</li>
           <li>Upload the file using this form</li>
           <li>The system will process deductions automatically</li>
         </ol>
-        <a href="/sample_payroll.xlsx" class="btn btn-secondary btn-sm mt-3">
-          <i class="fas fa-download"></i> Download Sample
-        </a>
       </div>
     </div>
 
@@ -71,14 +106,28 @@
         <h4><i class="fas fa-list"></i> Required Columns</h4>
       </div>
       <div class="card-body" style="font-size: 13px;">
-        <ul style="padding-left: 16px; display: flex; flex-direction: column; gap: 6px;">
-          <li><strong>Employee Name</strong></li>
-          <li><strong>Basic Salary</strong></li>
-          <li>Allowances</li>
-          <li>Deductions</li>
-          <li>Loan Deductions</li>
-          <li>Other Bonuses</li>
-        </ul>
+        <div class="mb-3">
+          <strong style="color: #0f3460;">Pastoral Template:</strong>
+          <ul style="padding-left: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+            <li>Employee Name, Basic Salary, Meals Monthly</li>
+            <li>Responsibility Allowance, COLA, Leave Allowance</li>
+            <li>Other Earnings, PAYE, 10% Tithe</li>
+            <li>Future Savings, Other Deductions</li>
+          </ul>
+        </div>
+        <div>
+          <strong style="color: #198754;">Non-Pastoral Template:</strong>
+          <ul style="padding-left: 16px; display: flex; flex-direction: column; gap: 4px; font-size: 12px;">
+            <li>Employee Name, Monthly Basic Salary</li>
+            <li>Rent Monthly, Utility Monthly, Meals Monthly</li>
+            <li>Transport Monthly, COLA</li>
+            <li>SSNIT 5.5%, PAYE, 10% Tithe</li>
+          </ul>
+        </div>
+        <hr>
+        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">
+          <i class="fas fa-sync"></i> Employee personal info syncs automatically from employee records.
+        </p>
       </div>
     </div>
   </div>

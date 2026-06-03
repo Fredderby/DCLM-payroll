@@ -14,14 +14,19 @@ def calculate_payroll_totals(earnings_dict, deductions_dict):
         earnings_dict.get('responsibility_allowance', 0),
         earnings_dict.get('cola', 0),
         earnings_dict.get('leave_allowance', 0),
-        earnings_dict.get('other_earnings', 0)
+        earnings_dict.get('other_earnings', 0),
+        earnings_dict.get('rent_monthly', 0),
+        earnings_dict.get('utility_monthly', 0),
+        earnings_dict.get('transport_monthly', 0),
     ])
 
     total_deductions = sum([
         deductions_dict.get('paye', 0),
         deductions_dict.get('tithe', 0),
         deductions_dict.get('future_savings', 0),
-        deductions_dict.get('other_deductions', 0)
+        deductions_dict.get('other_deductions', 0),
+        deductions_dict.get('employee_pf', 0),      # Historical - kept for existing records
+        deductions_dict.get('ssnit_deduction', 0),   # SSNIT 5.5% - replaces PF-8% for new uploads
     ])
 
     net_salary = total_earnings - total_deductions
@@ -29,17 +34,11 @@ def calculate_payroll_totals(earnings_dict, deductions_dict):
     return total_earnings, total_deductions, net_salary
 
 
-def create_payroll_record(db: Session, employee_id: int, payroll_data: dict):
+def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
     """Create a comprehensive payroll record"""
-    # Look up employee name for the payroll record
-    employee_name = ""
-    if employee_id:
-        emp = db.query(Employee).filter(Employee.id == employee_id).first()
-        if emp and emp.name:
-            employee_name = emp.name
-    # Fall back to the name from payroll_data if available
-    if not employee_name:
-        employee_name = payroll_data.get('employee_name', '')
+    # Use employee object directly (already looked up by caller)
+    employee_name = employee.name if employee else payroll_data.get('employee_name', '')
+    staff_category = payroll_data.get('staff_category', 'pastoral')
 
     earnings = {
         'basic_salary': payroll_data.get('basic_salary', 0),
@@ -48,13 +47,21 @@ def create_payroll_record(db: Session, employee_id: int, payroll_data: dict):
         'cola': payroll_data.get('cola', 0),
         'leave_allowance': payroll_data.get('leave_allowance', 0),
         'other_earnings': payroll_data.get('other_earnings', 0),
+        'rent_monthly': payroll_data.get('rent_monthly', 0),
+        'utility_monthly': payroll_data.get('utility_monthly', 0),
+        'transport_monthly': payroll_data.get('transport_monthly', 0),
     }
+
+    ssnit_val = payroll_data.get('ssnit_deduction', 0) or 0
+    pf_val = payroll_data.get('employee_pf', 0) or 0
 
     deductions = {
         'paye': payroll_data.get('paye', 0),
         'tithe': payroll_data.get('tithe', 0),
         'future_savings': payroll_data.get('future_savings', 0),
         'other_deductions': payroll_data.get('other_deductions', 0),
+        'employee_pf': pf_val,           # Historical - kept for existing records
+        'ssnit_deduction': ssnit_val,    # SSNIT 5.5% - primary deduction for new uploads
     }
 
     total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
@@ -62,17 +69,23 @@ def create_payroll_record(db: Session, employee_id: int, payroll_data: dict):
     record = PayrollRecord(
         employee_name=employee_name,
         month=payroll_data.get('month', datetime.now().strftime("%B %Y")),
+        staff_category=staff_category,
         basic_salary=earnings['basic_salary'],
         meals_monthly=earnings['meals_monthly'],
         responsibility_allowance=earnings['responsibility_allowance'],
         cola=earnings['cola'],
         leave_allowance=earnings['leave_allowance'],
         other_earnings=earnings['other_earnings'],
+        rent_monthly=earnings['rent_monthly'],
+        utility_monthly=earnings['utility_monthly'],
+        transport_monthly=earnings['transport_monthly'],
         total_earnings=total_earnings,
         paye=deductions['paye'],
         tithe=deductions['tithe'],
         future_savings=deductions['future_savings'],
         other_deductions=deductions['other_deductions'],
+        employee_pf=deductions['employee_pf'],         # Historical - kept for existing records
+        ssnit_deduction=deductions['ssnit_deduction'], # SSNIT 5.5% for new uploads
         total_deductions=total_deductions,
         net_salary=net_salary,
         employer_contribution=payroll_data.get('employer_contribution', 0)

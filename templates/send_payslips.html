@@ -138,53 +138,59 @@
 
 {% block extra_scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  var searchInput = document.getElementById('sendSearch');
-  var filterMonth = document.getElementById('filterMonth');
-  var filterEmail = document.getElementById('filterEmail');
-  var selectAll = document.getElementById('selectAll');
-  var table = document.getElementById('sendTable');
-  var sendBtn = document.getElementById('sendAllBtn');
+(function() {
+  function setupPage() {
+    var searchInput = document.getElementById('sendSearch');
+    var filterMonth = document.getElementById('filterMonth');
+    var filterEmail = document.getElementById('filterEmail');
+    var selectAll = document.getElementById('selectAll');
+    var table = document.getElementById('sendTable');
+    var sendBtn = document.getElementById('sendAllBtn');
+    if (!table) return;
 
-  // Search and filter
-  function filterTable() {
-    var q = (searchInput.value || '').toLowerCase();
-    var month = filterMonth ? filterMonth.value : '';
-    var email = filterEmail ? filterEmail.value : '';
-    var rows = table.querySelectorAll('tbody tr');
+    // Search and filter
+    function filterTable() {
+      var q = (searchInput.value || '').toLowerCase();
+      var month = filterMonth ? filterMonth.value : '';
+      var email = filterEmail ? filterEmail.value : '';
+      var rows = table.querySelectorAll('tbody tr');
 
-    rows.forEach(function(row) {
-      var text = row.textContent.toLowerCase();
-      var rowMonth = row.getAttribute('data-month') || '';
-      var emailStatus = row.getAttribute('data-email-status') || '';
+      rows.forEach(function(row) {
+        var text = row.textContent.toLowerCase();
+        var rowMonth = row.getAttribute('data-month') || '';
+        var emailStatus = row.getAttribute('data-email-status') || '';
 
-      var match = text.includes(q);
-      if (month && rowMonth !== month) match = false;
-      if (email === 'no_email' && emailStatus !== 'no_email') match = false;
-      if (email === 'sent' && emailStatus !== 'sent') match = false;
+        var match = text.includes(q);
+        if (month && rowMonth !== month) match = false;
+        if (email === 'no_email' && emailStatus !== 'no_email') match = false;
+        if (email === 'sent' && emailStatus !== 'sent') match = false;
 
-      row.style.display = match ? '' : 'none';
-    });
-  }
+        row.style.display = match ? '' : 'none';
+      });
+    }
 
-  if (searchInput) searchInput.addEventListener('keyup', filterTable);
-  if (filterMonth) filterMonth.addEventListener('change', filterTable);
-  if (filterEmail) filterEmail.addEventListener('change', filterTable);
+    if (searchInput) { searchInput.removeEventListener('keyup', filterTable); searchInput.addEventListener('keyup', filterTable); }
+    if (filterMonth) { filterMonth.removeEventListener('change', filterTable); filterMonth.addEventListener('change', filterTable); }
+    if (filterEmail) { filterEmail.removeEventListener('change', filterTable); filterEmail.addEventListener('change', filterTable); }
 
-  // Select all
-  if (selectAll) {
-    selectAll.addEventListener('change', function() {
-      var visible = table.querySelectorAll('tbody tr[style*="display: none"]');
+    // Select all
+    if (selectAll) {
+      selectAll.removeEventListener('change', selectAllHandler);
+      selectAll.addEventListener('change', selectAllHandler);
+    }
+    function selectAllHandler() {
       var allCheckboxes = table.querySelectorAll('.payslip-check:not(:disabled)');
       allCheckboxes.forEach(function(cb) {
         cb.checked = selectAll.checked;
       });
-    });
-  }
+    }
 
-  // Send all
-  if (sendBtn) {
-    sendBtn.addEventListener('click', function() {
+    // Send all
+    if (sendBtn) {
+      sendBtn.removeEventListener('click', sendAllHandler);
+      sendBtn.addEventListener('click', sendAllHandler);
+    }
+    function sendAllHandler() {
       var selected = [];
       table.querySelectorAll('.payslip-check:checked:not(:disabled)').forEach(function(cb) {
         selected.push(cb.value);
@@ -221,74 +227,70 @@ document.addEventListener('DOMContentLoaded', function() {
         sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send All';
         alert('Error sending emails.');
       });
+    }
+
+    // Convert onclick attributes to event listeners for SPA compatibility
+    table.querySelectorAll('[onclick*="sendSinglePayslip"]').forEach(function(btn) {
+      var id = btn.getAttribute('data-id');
+      var name = btn.getAttribute('data-name');
+      btn.removeAttribute('onclick');
+      btn.addEventListener('click', function() {
+        if (!id) return;
+        var targetName = name || "this employee";
+        if (!confirm("Send payslip to " + targetName + "?")) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
+
+        fetch("/payslips/" + id + "/send-single", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        })
+        .then(function(r) {
+          if (!r.ok) {
+            return r.json().then(function(err) { throw new Error(err.error || "Server error"); });
+          }
+          return r.json();
+        })
+        .then(function(data) {
+          if (data.success) {
+            btn.innerHTML = '<i class="fas fa-check"></i> Sent';
+            btn.className = "btn btn-sm btn-success";
+            setTimeout(function() {
+              btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+              btn.className = "btn btn-sm btn-outline-success";
+              btn.disabled = false;
+            }, 5000);
+          } else {
+            btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed';
+            btn.className = "btn btn-sm btn-danger";
+            setTimeout(function() {
+              btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+              btn.className = "btn btn-sm btn-outline-success";
+              btn.disabled = false;
+            }, 3000);
+            alert("Error: " + (data.error || "Sending failed"));
+          }
+        })
+        .catch(function(err) {
+          btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
+          btn.className = "btn btn-sm btn-danger";
+          setTimeout(function() {
+            btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
+            btn.className = "btn btn-sm btn-outline-success";
+            btn.disabled = false;
+          }, 3000);
+          alert("Network error: " + err.message);
+        });
+      });
     });
   }
 
-  // Individual send
-  table.querySelectorAll('.send-single').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      var id = this.getAttribute('data-id');
-      window.location.href = '/payslips/' + id + '/send-email';
-    });
-  });
-});
+  document.addEventListener('DOMContentLoaded', setupPage);
+  document.addEventListener('spa-content-loaded', setupPage);
+  setupPage();
+})();
 </script>
-
-<script>
-// Single send payslip function - provides visual feedback during sending
-function sendSinglePayslip(btn) {
-  var id = btn.getAttribute("data-id");
-  var name = btn.getAttribute("data-name");
-  if (!id) return;
-  var targetName = name || "this employee";
-  if (!confirm("Send payslip to " + targetName + "?")) return;
-  
-  // Disable button and show spinner for visual feedback
-  btn.disabled = true;
-  var originalHTML = btn.innerHTML;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
-  
-  fetch("/payslips/" + id + "/send-single", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" }
-  })
-  .then(function(r) {
-    if (!r.ok) {
-      return r.json().then(function(err) { throw new Error(err.error || "Server error"); });
-    }
-    return r.json();
-  })
-  .then(function(data) {
-    if (data.success) {
-      btn.innerHTML = '<i class="fas fa-check"></i> Sent';
-      btn.className = "btn btn-sm btn-success";
-      // Reset after 5 seconds to allow re-sending if needed
-      setTimeout(function() {
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
-        btn.className = "btn btn-sm btn-outline-success";
-        btn.disabled = false;
-      }, 5000);
-    } else {
-      btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed';
-      btn.className = "btn btn-sm btn-danger";
-      setTimeout(function() {
-        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
-        btn.className = "btn btn-sm btn-outline-success";
-        btn.disabled = false;
-      }, 3000);
-      alert("Error: " + (data.error || "Sending failed"));
-    }
-  })
-  .catch(function(err) {
-    btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error';
-    btn.className = "btn btn-sm btn-danger";
-    setTimeout(function() {
-      btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send';
-      btn.className = "btn btn-sm btn-outline-success";
-      btn.disabled = false;
-    }, 3000);
-    alert("Network error: " + err.message);
-  });
-}
-</script>
+=======
+<search_replace_blocks
 {% endblock %}

@@ -506,10 +506,6 @@
 
 <script>
 (function() {
-  // ─── Singleton: init only once ───
-  if (window.__payslipInitDone) return;
-  window.__payslipInitDone = true;
-
   var currentPreviewId = null;
 
   function fmt(v) {
@@ -545,6 +541,11 @@
     h+=row('PAYE Tax',undefined,d.paye);
     h+=row('10% Tithe',undefined,d.tithe);
     h+=row('Future Savings',undefined,d.future_savings);
+    if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
+      h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
+    } else {
+      h+=row('SSNIT 5.5%',undefined,0);
+    }
     h+=row('Other Deductions',undefined,d.other_deductions);
     h+='<tr class="total-row"><td>TOTAL</td><td>'+fmt(d.total_earnings)+'</td><td>'+fmt(d.total_deductions)+'</td></tr>';
     h+='</tbody></table></div>';
@@ -561,7 +562,12 @@
   }
 
   // ─── Central click handler (single listener) ───
-  document.addEventListener('click', function(e) {
+  function attachClickHandler() {
+    document.removeEventListener('click', payslipClickHandler);
+    document.addEventListener('click', payslipClickHandler);
+  }
+
+  function payslipClickHandler(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn) return;
     var action = btn.getAttribute('data-action');
@@ -575,8 +581,10 @@
       var content = document.getElementById('previewContent');
       if (!content) return;
       content.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading payslip data...</p></div>';
-      document.getElementById('previewDownloadBtn').setAttribute('data-id', id);
-      document.getElementById('previewGeneratePdfBtn').setAttribute('data-id', id);
+      var dlBtn = document.getElementById('previewDownloadBtn');
+      var gpBtn = document.getElementById('previewGeneratePdfBtn');
+      if(dlBtn) dlBtn.setAttribute('data-id', id);
+      if(gpBtn) gpBtn.setAttribute('data-id', id);
       fetch('/payslips/'+id+'/data', {credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('Failed');return r.json();})
         .then(function(data){content.innerHTML=buildPreview(data);new bootstrap.Modal(document.getElementById('previewModal')).show();})
         .catch(function(err){content.innerHTML='<div class="alert alert-danger text-center py-4"><i class="fas fa-exclamation-triangle"></i> '+err.message+'</div>';new bootstrap.Modal(document.getElementById('previewModal')).show();});
@@ -591,8 +599,8 @@
           if(currentPreviewId===id){
           fetch('/payslips/'+id+'/data', {credentials:'same-origin'}).then(function(r){return r.json();}).then(function(data){
               var c=document.getElementById('previewContent');if(c)c.innerHTML=buildPreview(data);
-              document.getElementById('previewGeneratePdfBtn').setAttribute('data-id',id);
-              document.getElementById('previewDownloadBtn').setAttribute('data-id',id);
+              var gpBtn2=document.getElementById('previewGeneratePdfBtn');if(gpBtn2)gpBtn2.setAttribute('data-id',id);
+              var dlBtn2=document.getElementById('previewDownloadBtn');if(dlBtn2)dlBtn2.setAttribute('data-id',id);
             });
           }
         })
@@ -612,10 +620,12 @@
         .catch(function(err){alert('Error: '+err.message);})
         .finally(function(){if(dlBtn){dlBtn.disabled=false;dlBtn.innerHTML='<i class="fas fa-download"></i> Download PDF';}});
     }
-  });
+  }
 
   // ─── Setup page interactions (toggle, filter, generate-all) ───
   function setupPage() {
+    attachClickHandler();
+
     // View Toggle
     var cardsView = document.getElementById('cardsView');
     var tableView = document.getElementById('tableView');
@@ -664,7 +674,8 @@
     var genAllBtn = document.getElementById('generateAllBtn');
     if (genAllBtn) {
       genAllBtn.onclick = function() {
-        var m = sel ? sel.value : '';
+        var sel2 = document.getElementById('monthSelectPayslip');
+        var m = sel2 ? sel2.value : '';
         if (!confirm('Generate PDFs for ' + (m || 'all months') + '?')) return;
         var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
         fetch('/payslips/generate-all', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'month='+encodeURIComponent(m||'__ALL__')})
@@ -678,32 +689,12 @@
       };
     }
   }
+
+  // Run immediately and on SPA navigation
   setupPage();
-
-  // Re-run on SPA navigation
   document.addEventListener('spa-content-loaded', setupPage);
-
-  // ─── Generate All ───
-  var genAllBtn = document.getElementById('generateAllBtn');
-  if (genAllBtn) {
-    genAllBtn.onclick = function() {
-      var sel = document.getElementById('monthSelectPayslip');
-      var m = sel ? sel.value : '';
-      if (!confirm('Generate PDFs for ' + (m || 'all months') + '?')) return;
-      var btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
-      fetch('/payslips/generate-all', {method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'month='+encodeURIComponent(m||'__ALL__')})
-        .then(function(r){return r.json();})
-        .then(function(d){
-          btn.disabled=false;btn.innerHTML='<i class="fas fa-file-pdf"></i> Generate All PDFs';
-          if(d.success){if(window.showToast)window.showToast(d.message||'PDFs generated','success');}
-          else{alert(d.message||'Failed');}
-        })
-        .catch(function(err){btn.disabled=false;btn.innerHTML='<i class="fas fa-file-pdf"></i> Generate All PDFs';alert('Error: '+err.message);});
-    };
-  }
-
-  // Re-run after SPA navigation
-  document.addEventListener('spa-content-loaded', setupPage);
+  // Also run on DOMContentLoaded for direct page loads
+  document.addEventListener('DOMContentLoaded', setupPage);
 })();
 </script>
 {% endblock %}

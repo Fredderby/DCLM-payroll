@@ -91,16 +91,25 @@
     temp.innerHTML = html;
     var newContent = temp.querySelector('.content-wrapper') || temp.querySelector('.main-content') || temp.querySelector('body');
     if (!newContent) return;
-    var extraCss = [], extraScripts = [];
-    temp.querySelectorAll('style').forEach(function(s) { if (!newContent.contains(s)) extraCss.push(s.textContent); });
-    temp.querySelectorAll('script').forEach(function(s) { if (!newContent.contains(s)) { if (s.src) extraScripts.push(s.src); else extraCss.push(s.textContent); } });
-    contentWrapper.innerHTML = newContent.innerHTML;
-    contentWrapper.querySelectorAll('script').forEach(function(os) {
-      var ns = document.createElement('script');
-      if (os.src) ns.src = os.src;
-      if (os.textContent) ns.textContent = os.textContent;
-      ns.async = false; os.parentNode.replaceChild(ns, os);
+    
+    // Extract scripts and styles from the new content BEFORE innerHTML replacement
+    var scriptsToExecute = [];
+    newContent.querySelectorAll('script').forEach(function(s) {
+      scriptsToExecute.push({ src: s.src, text: s.textContent });
     });
+    
+    contentWrapper.innerHTML = newContent.innerHTML;
+    
+    // Re-execute all inline scripts from the new content
+    scriptsToExecute.forEach(function(s) {
+      var ns = document.createElement('script');
+      if (s.src) ns.src = s.src;
+      if (s.text) ns.textContent = s.text;
+      ns.async = false;
+      document.body.appendChild(ns);
+    });
+    
+    // Re-bind inline event handlers
     contentWrapper.querySelectorAll('form[onsubmit]').forEach(function(f) {
       var c = f.getAttribute('onsubmit'); if (c) { f.removeAttribute('onsubmit'); f.addEventListener('submit', function(e) { try { return eval(c); } catch(err) { return true; } }); }
     });
@@ -110,8 +119,15 @@
     contentWrapper.querySelectorAll('[onchange]').forEach(function(el) {
       var c = el.getAttribute('onchange'); if (c) { el.removeAttribute('onchange'); el.addEventListener('change', function(e) { try { return eval(c); } catch(err) {} }); }
     });
+    
+    // Handle head-level styles and scripts
+    var extraCss = [], extraScripts = [];
+    temp.querySelectorAll('style').forEach(function(s) { if (!newContent.contains(s)) extraCss.push(s.textContent); });
+    temp.querySelectorAll('script').forEach(function(s) { if (!newContent.contains(s)) { if (s.src) extraScripts.push(s.src); } });
     extraCss.forEach(function(css) { var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); });
     extraScripts.forEach(function(src) { if (!document.querySelector('script[src="' + src + '"]')) { var ns = document.createElement('script'); ns.src = src; ns.async = false; document.body.appendChild(ns); } });
+    
+    // Update header
     var header = document.querySelector('.top-header');
     if (header) {
       var nh = temp.querySelector('.top-header');
@@ -119,7 +135,7 @@
         var h1 = header.querySelector('.page-title'), nh1 = nh.querySelector('.page-title');
         if (h1 && nh1) h1.textContent = nh1.textContent;
         var ac = header.querySelector('.top-header-right'), nac = nh.querySelector('.top-header-right');
-        if (ac && nac) { ac.innerHTML = nac.innerHTML; ac.querySelectorAll('script').forEach(function(s) { var ns = document.createElement('script'); if (s.src) ns.src = s.src; else ns.textContent = s.textContent; ns.async = false; s.parentNode.replaceChild(ns, s); }); }
+        if (ac && nac) { ac.innerHTML = nac.innerHTML; }
       }
     }
     document.dispatchEvent(new CustomEvent('spa-content-loaded', { detail: { url: url } }));

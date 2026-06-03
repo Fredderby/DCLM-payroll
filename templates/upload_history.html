@@ -76,19 +76,28 @@
 
 {% block extra_scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  var searchInput = document.getElementById('historySearch');
-  var table = document.getElementById('historyTable');
+(function() {
+  function setupPage() {
+    var searchInput = document.getElementById('historySearch');
+    var table = document.getElementById('historyTable');
 
-  function filterTable() {
-    var q = (searchInput.value || '').toLowerCase();
-    var rows = table.querySelectorAll('tbody tr');
-    rows.forEach(function(row) {
-      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
+    function filterTable() {
+      var q = (searchInput.value || '').toLowerCase();
+      var rows = table.querySelectorAll('tbody tr');
+      rows.forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    }
+
+    if (searchInput) {
+      searchInput.removeEventListener('keyup', filterTable);
+      searchInput.addEventListener('keyup', filterTable);
+    }
   }
 
-  if (searchInput) searchInput.addEventListener('keyup', filterTable);
-});
+  document.addEventListener('DOMContentLoaded', setupPage);
+  document.addEventListener('spa-content-loaded', setupPage);
+  setupPage();
+})();
 </script>
 {% endblock %}

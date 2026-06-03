@@ -213,6 +213,148 @@ async def upload_page(request: Request, db: Session = Depends(get_db)):
         rendered = template.render({})
         return HTMLResponse(content=rendered, media_type="text/html")
 
+def _build_excel_template(headers, sample_data, instructions, sheet_title, filename):
+    """Helper to build and return an Excel template file."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    import tempfile
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = sheet_title
+
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="0F3460", end_color="0F3460", fill_type="solid")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = thin_border
+
+    for col_idx, value in enumerate(sample_data, 1):
+        cell = ws.cell(row=2, column=col_idx, value=value)
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        if col_idx >= 2:
+            cell.number_format = '#,##0.00'
+
+    # Column widths
+    for i in range(len(headers)):
+        ws.column_dimensions[chr(65 + i)].width = max(18, len(headers[i]) + 4)
+
+    for i, text in enumerate(instructions):
+        cell = ws.cell(row=4 + i, column=1, value=text)
+        cell.font = Font(bold=(i == 0), size=10, color="000000" if i == 0 else "666666")
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(tmp.name)
+    tmp.close()
+
+    return FileResponse(
+        path=tmp.name,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@app.get("/upload/template/pastoral")
+async def download_pastoral_template(request: Request):
+    """Download the Pastoral Payroll Template.
+    
+    Contains Employee Name + standard pastoral earnings/deductions.
+    Employee personal info syncs automatically from employee records.
+    """
+    try:
+        headers = [
+            "Employee Name",
+            "Basic Salary",
+            "Meals Monthly",
+            "Responsibility Allowance",
+            "COLA",
+            "Leave Allowance",
+            "Other Earnings",
+            "PAYE",
+            "10% Tithe",
+            "Future Savings",
+            "Other Deductions",
+            "Employer Contribution"
+        ]
+        sample_data = [
+            "John Doe", 5000.00, 300.00, 200.00, 150.00, 0.00, 0.00,
+            500.00, 500.00, 200.00, 0.00, 0.00
+        ]
+        instructions = [
+            "INSTRUCTIONS - PASTORAL PAYROLL:",
+            "1. Only Employee Name is required. Other employee info syncs from the employee database.",
+            "2. Employee Name must exactly match the name in Employee Management (case-insensitive).",
+            "3. All numeric fields are optional (leave blank or 0 if not applicable).",
+            "4. Do not include currency symbols, commas, or special characters in numeric fields.",
+            "5. The payroll month is selected separately in the upload form on the Upload Payroll page.",
+            "6. Use this template for Pastoral staff only. For Non-Pastoral, download the other template."
+        ]
+        return _build_excel_template(headers, sample_data, instructions, "Pastoral Template", "pastoral_payroll_template.xlsx")
+    except ImportError:
+        return JSONResponse(content={"error": "openpyxl not available. Install with: pip install openpyxl"}, status_code=500)
+    except Exception as e:
+        return JSONResponse(content={"error": f"Failed to generate template: {str(e)}"}, status_code=500)
+
+
+@app.get("/upload/template/non-pastoral")
+async def download_non_pastoral_template(request: Request):
+    """Download the Non-Pastoral Payroll Template.
+    
+    Contains Employee Name + non-pastoral earnings/deductions.
+    Employee personal info syncs automatically from employee records.
+    """
+    try:
+        headers = [
+            "Employee Name",
+            "Monthly Basic Salary",
+            "Rent Monthly",
+            "Utility Monthly",
+            "Meals Monthly",
+            "Transport Monthly",
+            "COLA",
+            "SSNIT 5.5%",
+            "PAYE",
+            "10% Tithe"
+        ]
+        sample_data = [
+            "Jane Doe", 4000.00, 800.00, 400.00, 300.00, 500.00, 200.00,
+            220.00, 400.00, 400.00
+        ]
+        instructions = [
+            "INSTRUCTIONS - NON-PASTORAL PAYROLL:",
+            "1. Only Employee Name is required. Other employee info syncs from the employee database.",
+            "2. Employee Name must exactly match the name in Employee Management (case-insensitive).",
+            "3. All numeric fields are optional (leave blank or 0 if not applicable).",
+            "4. Do not include currency symbols, commas, or special characters in numeric fields.",
+            "5. The payroll month is selected separately in the upload form on the Upload Payroll page.",
+            "6. Use this template for Non-Pastoral staff only. For Pastoral, download the other template.",
+            "7. SSNIT 5.5% = 5.5% of Monthly Basic Salary (social security contribution). Enter the exact value from your payroll spreadsheet."
+        ]
+        return _build_excel_template(headers, sample_data, instructions, "Non-Pastoral Template", "non_pastoral_payroll_template.xlsx")
+    except ImportError:
+        return JSONResponse(content={"error": "openpyxl not available. Install with: pip install openpyxl"}, status_code=500)
+    except Exception as e:
+        return JSONResponse(content={"error": f"Failed to generate template: {str(e)}"}, status_code=500)
+
+
+@app.get("/upload/template/download")
+async def download_payroll_template(request: Request):
+    """Redirect to the pastoral template for backward compatibility."""
+    # For backward compatibility: if someone clicks an old link, serve pastoral template
+    return await download_pastoral_template(request)
+
 @app.post("/upload")
 async def upload_payroll(request: Request, file: UploadFile = File(...), month: str = Form(...), db: Session = Depends(get_db)):
     try:
@@ -370,25 +512,35 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     
                     matched_emp_ids.add(employee.id)
                     
+                    # Determine staff_category from record
+                    staff_category = record.get('staff_category', 'pastoral')
+                    
                     # Check if payroll record already exists for this employee + month
                     existing_payroll = db.query(PayrollRecord).filter(
-                        PayrollRecord.employee_id == employee.id,
+                        PayrollRecord.employee_name == employee.name,
                         PayrollRecord.month == month
                     ).first()
                     
                     if existing_payroll:
                         # Update existing record instead of creating duplicate
+                        existing_payroll.staff_category = staff_category
                         existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
                         existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
                         existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
                         existing_payroll.cola = record.get('cola', existing_payroll.cola)
                         existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
                         existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
+                        # Non-Pastoral earnings
+                        existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
+                        existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
+                        existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
                         existing_payroll.paye = record.get('paye', existing_payroll.paye)
                         existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
                         existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
                         existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
                         existing_payroll.employer_contribution = record.get('employer_contribution', existing_payroll.employer_contribution)
+                        existing_payroll.employee_pf = record.get('employee_pf', existing_payroll.employee_pf)
+                        existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
                         from app.services.payroll_service import calculate_payroll_totals
                         earnings = {
                             'basic_salary': existing_payroll.basic_salary,
@@ -397,12 +549,17 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                             'cola': existing_payroll.cola,
                             'leave_allowance': existing_payroll.leave_allowance,
                             'other_earnings': existing_payroll.other_earnings,
+                            'rent_monthly': existing_payroll.rent_monthly,
+                            'utility_monthly': existing_payroll.utility_monthly,
+                            'transport_monthly': existing_payroll.transport_monthly,
                         }
                         deductions = {
                             'paye': existing_payroll.paye,
                             'tithe': existing_payroll.tithe,
                             'future_savings': existing_payroll.future_savings,
                             'other_deductions': existing_payroll.other_deductions,
+                            'employee_pf': existing_payroll.employee_pf,
+                            'ssnit_deduction': existing_payroll.ssnit_deduction,
                         }
                         total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
                         existing_payroll.total_earnings = total_earnings
@@ -419,7 +576,16 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         db.commit()
                     else:
                         # Create payroll record (no PDF generation during upload)
-                        payroll_record = create_payroll_record(db, employee.id, record)
+                        # Map record fields to employee object for create_payroll_record
+                        employee.name = record.get('employee_name', employee.name)
+                        employee.email = record.get('email', employee.email)
+                        employee.function = record.get('function', employee.function)
+                        employee.designation = record.get('designation', employee.designation)
+                        employee.location = record.get('location', employee.location)
+                        employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
+                        employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
+                        employee.date_joined = record.get('date_joined', getattr(employee, 'date_joined', None))
+                        payroll_record = create_payroll_record(db, employee, record)
                         db.commit()
                     
                     processed += 1
@@ -1106,6 +1272,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "tithe": float(payroll.tithe or 0),
         "future_savings": float(payroll.future_savings or 0),
         "other_deductions": float(payroll.other_deductions or 0),
+        "ssnit_deduction": float(payroll.ssnit_deduction or 0),
         "total_deductions": float(payroll.total_deductions or 0),
         "net_salary": float(payroll.net_salary or 0),
         "employer_contribution": float(payroll.employer_contribution or 0),

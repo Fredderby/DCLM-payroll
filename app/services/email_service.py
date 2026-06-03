@@ -269,12 +269,30 @@ async def send_email(to_email: str, subject: str, body: str):
     return await EmailService.send_notification(to_email, subject, body)
 
 
-async def send_payslip_email(recipient_email: str, employee_name: str, pdf_path: str, month: str):
+async def send_payslip_email(recipient_email: str, employee_name: str, pdf_path: str, month: str, net_salary: float = None):
     """Send a single payslip via email. Returns (success: bool, error_msg: str) tuple."""
     try:
         import traceback as _tb
-        from app.models.payroll import PayrollRecord
-        net_salary = 0
+        if net_salary is None:
+            # Try to get net_salary from payroll records
+            try:
+                from app.models.payroll import PayrollRecord
+                from app.core.database import SessionLocal
+                db = SessionLocal()
+                try:
+                    payroll_entry = db.query(PayrollRecord).filter(
+                        PayrollRecord.employee_name == employee_name,
+                        PayrollRecord.month == month
+                    ).order_by(PayrollRecord.id.desc()).first()
+                    if payroll_entry:
+                        net_salary = payroll_entry.net_salary
+                    else:
+                        net_salary = 0
+                finally:
+                    db.close()
+            except Exception as e:
+                print(f"Could not look up net_salary for {employee_name}: {e}")
+                net_salary = 0
         if pdf_path and os.path.exists(pdf_path):
             success, smtp_msg = await EmailService.send_payslip(
                 recipient_email=recipient_email,
