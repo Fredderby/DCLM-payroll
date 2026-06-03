@@ -1,41 +1,42 @@
 /**
- * DCLM Payroll - SPA Navigation System v6
+ * DCLM Payroll - SPA Navigation System v7
  * 
  * KEY FIXES:
- * 1. Force full page reload on login redirect (`_fresh=true`)
- * 2. Re-executes ALL scripts from loaded content (fixes post-login button activation)
- * 3. Properly re-binds inline event handlers (onclick, onsubmit, etc.)
- * 4. Reinitializes page-specific JavaScript after content swap
- * 5. Loads extra scripts from head that aren't already loaded
- * 6. Fires events for other modules to reinitialize
- * 7. Handles forms with inline onsubmit properly
+ * 1. Fixed missing newline causing contentWrapper to not be defined on normal loads
+ * 2. Force full page reload on login redirect to ensure auth context
+ * 3. Re-executes all inline scripts from loaded content
+ * 4. Re-binds inline event handlers (onclick, onsubmit, onchange)
+ * 5. Registers and runs SPA hooks for page-specific initialization
+ * 6. Updates navigation active state after page transitions
+ * 7. Shows loading indicator during SPA navigation
  */
 
 (function() {
   'use strict';
 
-  // Guard against double init
   if (window.__spaNavInitialized) return;
   window.__spaNavInitialized = true;
 
-      // Force full page reload when coming from login redirect
-  // This ensures the auth cookie is set and all JS modules initialize correctly.
-  // Without this, SPA caching keeps the pre-login state broken.
+  // Force full page reload when coming from login redirect
   if (window.location.href.indexOf("_fresh=true") !== -1) {
     var cleanUrl = window.location.href.replace(/[?&]_fresh=true/g, "").replace(/&&/g, "&").replace(/\?&/g, "?").replace(/\/\?/g, "/?");
     if (cleanUrl !== window.location.href && cleanUrl.length > 0) {
       window.history.replaceState({}, "", cleanUrl);
     }
-    // Force browser full reload to ensure all JS initializes fresh
     window.location.reload(true);
     return;
-  }var contentWrapper = document.querySelector('.content-wrapper');
-  if (!contentWrapper) return;
+  }
+
+  // Core SPA initialization
+  var contentWrapper = document.querySelector('.content-wrapper');
+  if (!contentWrapper) {
+    contentWrapper = document.querySelector('#main-content');
+    if (!contentWrapper) return;
+  }
 
   var cache = {};
   var isLoading = false;
 
-  // Global hook system for SPA reinitialization
   window.__spaHooks = window.__spaHooks || [];
   window.addSpaHook = function(fn) { window.__spaHooks.push(fn); };
   window.runSpaHooks = function() {
@@ -43,31 +44,22 @@
     hooks.forEach(function(fn) {
       try { fn(); } catch(e) { console.warn('SPA hook error:', e); }
     });
-    // Re-bind menu-tabs active state
     if (window.updateActiveNavTab) {
       try { window.updateActiveNavTab(); } catch(e) {}
     }
   };
 
-  // Expose navigateTo globally
   window.navigateTo = function(url, options) {
     options = options || {};
     if (isLoading) return;
-
-    // Force full reload on _fresh=true (login redirect)
     if (url.indexOf('_fresh=true') !== -1) {
       window.location.href = url;
       return;
     }
-
     if (url === window.location.pathname && !options.force) return;
-
     isLoading = true;
     showLoading(true);
-
     var fullUrl = url;
-
-    // Use cache if available
     if (cache[fullUrl] && !options.force) {
       applyContent(cache[fullUrl], fullUrl);
       window.history.pushState({ url: fullUrl }, '', fullUrl);
@@ -77,264 +69,101 @@
       runSpaHooks();
       return;
     }
-
-    fetch(fullUrl, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
-    })
+    fetch(fullUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     .then(function(res) {
-      if (!res.ok) {
-        window.location.href = fullUrl;
-        throw new Error('Fetch failed');
-      }
+      if (!res.ok) { window.location.href = fullUrl; throw new Error('Fetch failed'); }
       return res.text();
     })
     .then(function(html) {
       cache[fullUrl] = html;
-      if (options.replace) {
-        window.history.replaceState({ url: fullUrl }, '', fullUrl);
-      } else {
-        window.history.pushState({ url: fullUrl }, '', fullUrl);
-      }
+      if (options.replace) window.history.replaceState({ url: fullUrl }, '', fullUrl);
+      else window.history.pushState({ url: fullUrl }, '', fullUrl);
       applyContent(html, fullUrl);
       updateActiveNav(fullUrl);
       isLoading = false;
       showLoading(false);
     })
-    .catch(function() {
-      isLoading = false;
-      showLoading(false);
-    });
+    .catch(function() { isLoading = false; showLoading(false); });
   };
 
-  /**
-   * Apply fetched HTML content to the page
-   * CRITICAL: Must re-bind ALL scripts and event handlers
-   */
   function applyContent(html, url) {
     var temp = document.createElement('div');
     temp.innerHTML = html;
-
-    // Find the content-wrapper in fetched page
-    var newContent = temp.querySelector('.content-wrapper');
-    if (!newContent) {
-      newContent = temp.querySelector('.main-content');
-    }
-    if (!newContent) {
-      newContent = temp.querySelector('body');
-    }
+    var newContent = temp.querySelector('.content-wrapper') || temp.querySelector('.main-content') || temp.querySelector('body');
     if (!newContent) return;
-
-    // Capture extra inline styles/scripts from throughout the fetched page
-    var extraCssBlocks = [];
-    var extraScriptsToLoad = [];
-
-    var allExtraStyles = temp.querySelectorAll('style');
-    allExtraStyles.forEach(function(s) {
-      if (!newContent.contains(s)) {
-        extraCssBlocks.push(s.textContent);
-      }
-    });
-
-    var allExtraScripts = temp.querySelectorAll('script');
-    allExtraScripts.forEach(function(s) {
-      if (!newContent.contains(s)) {
-        if (s.src) {
-          extraScriptsToLoad.push(s.src);
-        } else {
-          extraCssBlocks.push(s.textContent);
-        }
-      }
-    });
-
-    // Replace current content
+    var extraCss = [], extraScripts = [];
+    temp.querySelectorAll('style').forEach(function(s) { if (!newContent.contains(s)) extraCss.push(s.textContent); });
+    temp.querySelectorAll('script').forEach(function(s) { if (!newContent.contains(s)) { if (s.src) extraScripts.push(s.src); else extraCss.push(s.textContent); } });
     contentWrapper.innerHTML = newContent.innerHTML;
-
-    // ═══════════════════════════════════════════════
-    // CRITICAL: Re-execute ALL inline scripts
-    // ═══════════════════════════════════════════════
-    var allScripts = contentWrapper.querySelectorAll('script');
-    allScripts.forEach(function(oldScript) {
-      var newScript = document.createElement('script');
-      if (oldScript.src) {
-        newScript.src = oldScript.src;
-        newScript.async = false;
-      }
-      if (oldScript.textContent) {
-        newScript.textContent = oldScript.textContent;
-      }
-      newScript.async = false;
-      oldScript.parentNode.replaceChild(newScript, oldScript);
+    contentWrapper.querySelectorAll('script').forEach(function(os) {
+      var ns = document.createElement('script');
+      if (os.src) ns.src = os.src;
+      if (os.textContent) ns.textContent = os.textContent;
+      ns.async = false; os.parentNode.replaceChild(ns, os);
     });
-
-    // ═══════════════════════════════════════════════
-    // CRITICAL: Re-bind inline event handlers
-    // ═══════════════════════════════════════════════
-    var forms = contentWrapper.querySelectorAll('form[onsubmit]');
-    forms.forEach(function(form) {
-      var handlerCode = form.getAttribute('onsubmit');
-      if (handlerCode) {
-        form.removeAttribute('onsubmit');
-        form.addEventListener('submit', function(e) {
-          try { return eval(handlerCode); } catch(err) { return true; }
-        });
-      }
+    contentWrapper.querySelectorAll('form[onsubmit]').forEach(function(f) {
+      var c = f.getAttribute('onsubmit'); if (c) { f.removeAttribute('onsubmit'); f.addEventListener('submit', function(e) { try { return eval(c); } catch(err) { return true; } }); }
     });
-
-    var clickElements = contentWrapper.querySelectorAll('[onclick]');
-    clickElements.forEach(function(el) {
-      var handlerCode = el.getAttribute('onclick');
-      if (handlerCode) {
-        el.removeAttribute('onclick');
-        el.addEventListener('click', function(e) {
-          try { return eval(handlerCode); } catch(err) {}
-        });
-      }
+    contentWrapper.querySelectorAll('[onclick]').forEach(function(el) {
+      var c = el.getAttribute('onclick'); if (c) { el.removeAttribute('onclick'); el.addEventListener('click', function(e) { try { return eval(c); } catch(err) {} }); }
     });
-
-    var changeElements = contentWrapper.querySelectorAll('[onchange]');
-    changeElements.forEach(function(el) {
-      var handlerCode = el.getAttribute('onchange');
-      if (handlerCode) {
-        el.removeAttribute('onchange');
-        el.addEventListener('change', function(e) {
-          try { return eval(handlerCode); } catch(err) {}
-        });
-      }
+    contentWrapper.querySelectorAll('[onchange]').forEach(function(el) {
+      var c = el.getAttribute('onchange'); if (c) { el.removeAttribute('onchange'); el.addEventListener('change', function(e) { try { return eval(c); } catch(err) {} }); }
     });
-
-    // Inject extra styles
-    extraCssBlocks.forEach(function(css) {
-      var styleTag = document.createElement('style');
-      styleTag.textContent = css;
-      document.head.appendChild(styleTag);
-    });
-
-    // Load extra scripts (deduped)
-    extraScriptsToLoad.forEach(function(src) {
-      if (!document.querySelector('script[src="' + src + '"]')) {
-        var ns = document.createElement('script');
-        ns.src = src;
-        ns.async = false;
-        document.body.appendChild(ns);
-      }
-    });
-
-    // ─── Update page header ───
-    var headerEl = document.querySelector('.top-header');
-    if (headerEl) {
-      var newHeader = temp.querySelector('.top-header');
-      if (newHeader) {
-        var titleEl = headerEl.querySelector('.page-title');
-        var newTitleEl = newHeader.querySelector('.page-title');
-        if (titleEl && newTitleEl) titleEl.textContent = newTitleEl.textContent;
-
-        var actionsEl = headerEl.querySelector('.top-header-right');
-        var newActionsEl = newHeader.querySelector('.top-header-right');
-        if (actionsEl && newActionsEl) {
-          actionsEl.innerHTML = newActionsEl.innerHTML;
-          actionsEl.querySelectorAll('script').forEach(function(s) {
-            var ns = document.createElement('script');
-            if (s.src) ns.src = s.src;
-            else ns.textContent = s.textContent;
-            ns.async = false;
-            s.parentNode.replaceChild(ns, s);
-          });
-          var actionClickEls = actionsEl.querySelectorAll('[onclick]');
-          actionClickEls.forEach(function(el) {
-            var handlerCode = el.getAttribute('onclick');
-            if (handlerCode) {
-              el.removeAttribute('onclick');
-              el.addEventListener('click', function(e) { try { return eval(handlerCode); } catch(err) {} });
-            }
-          });
-        }
+    extraCss.forEach(function(css) { var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st); });
+    extraScripts.forEach(function(src) { if (!document.querySelector('script[src="' + src + '"]')) { var ns = document.createElement('script'); ns.src = src; ns.async = false; document.body.appendChild(ns); } });
+    var header = document.querySelector('.top-header');
+    if (header) {
+      var nh = temp.querySelector('.top-header');
+      if (nh) {
+        var h1 = header.querySelector('.page-title'), nh1 = nh.querySelector('.page-title');
+        if (h1 && nh1) h1.textContent = nh1.textContent;
+        var ac = header.querySelector('.top-header-right'), nac = nh.querySelector('.top-header-right');
+        if (ac && nac) { ac.innerHTML = nac.innerHTML; ac.querySelectorAll('script').forEach(function(s) { var ns = document.createElement('script'); if (s.src) ns.src = s.src; else ns.textContent = s.textContent; ns.async = false; s.parentNode.replaceChild(ns, s); }); }
       }
     }
-
-    // Dispatch custom events for page-specific initializers
     document.dispatchEvent(new CustomEvent('spa-content-loaded', { detail: { url: url } }));
     document.dispatchEvent(new CustomEvent('content-loaded', { detail: { url: url } }));
-
-    // Run all registered SPA hooks
     setTimeout(runSpaHooks, 10);
-
     window.scrollTo(0, 0);
   }
 
   function updateActiveNav(url) {
     var path = url.replace(window.location.origin, '').split('?')[0];
-    document.querySelectorAll('[data-nav-link]').forEach(function(link) {
-      var href = link.getAttribute('href');
-      link.classList.toggle('active', href === path);
-    });
+    document.querySelectorAll('[data-nav-link]').forEach(function(link) { link.classList.toggle('active', link.getAttribute('href') === path); });
     if (window.updateActiveNavTab) window.updateActiveNavTab();
   }
 
-  function showLoading(visible) {
+  function showLoading(v) {
     var bar = document.getElementById('nprogress-bar');
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'nprogress-bar';
-      bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:3px;background:#2563eb;z-index:9999;transition:width 0.3s ease,opacity 0.3s ease;';
-      document.body.appendChild(bar);
-    }
-    if (visible) {
-      bar.style.width = '60%';
-      bar.style.opacity = '1';
-    } else {
-      bar.style.width = '100%';
-      setTimeout(function() { bar.style.opacity = '0'; setTimeout(function() { bar.style.width = '0'; }, 300); }, 200);
-    }
+    if (!bar) { bar = document.createElement('div'); bar.id = 'nprogress-bar'; bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:3px;background:#2563eb;z-index:9999;transition:width 0.3s ease,opacity 0.3s ease;'; document.body.appendChild(bar); }
+    if (v) { bar.style.width = '60%'; bar.style.opacity = '1'; }
+    else { bar.style.width = '100%'; setTimeout(function() { bar.style.opacity = '0'; setTimeout(function() { bar.style.width = '0'; }, 300); }, 200); }
   }
 
-  // Single click handler for navigation
   document.addEventListener('click', function(e) {
     var link = e.target.closest('a[href]');
     if (!link || e.defaultPrevented) return;
     var href = link.getAttribute('href');
     if (!href) return;
-
-    // Skip special links
     if (href.startsWith('http') && !href.startsWith(window.location.origin)) return;
     if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
     if (link.hasAttribute('download') || link.target === '_blank') return;
-
-    // Always do full navigation to login/logout
     if (href === '/logout' || href.startsWith('/login')) return;
-
-    // Skip form actions
     if (link.closest('form')) return;
     if (link.getAttribute('role') === 'button') return;
-
-    // Skip if href is an API endpoint or action endpoint
-    if (href.includes('/delete') || href.includes('/generate') || href.includes('/send') || href.includes('/upload') || href.includes('/test')) return;
-
+    if (href.includes('/delete') || href.includes('/generate') || href.includes('/send') || href.includes('/upload') || href.includes('/test') || href.includes('/download')) return;
     e.preventDefault();
     navigateTo(href);
   });
 
-  // Handle back/forward navigation
-  window.addEventListener('popstate', function(e) {
-    if (e.state && e.state.url) {
-      navigateTo(e.state.url, { replace: true });
-    }
-  });
-
-  // Expose functions globally
+  window.addEventListener('popstate', function(e) { if (e.state && e.state.url) navigateTo(e.state.url, { replace: true }); });
   window.spaNavigate = navigateTo;
 
-  // Run initialization on first load
   function onReady() {
-    if (window.updateActiveNavTab) {
-      window.updateActiveNavTab();
-      window.addSpaHook(window.updateActiveNavTab);
-    }
+    if (window.updateActiveNavTab) { window.updateActiveNavTab(); window.addSpaHook(window.updateActiveNavTab); }
     setTimeout(runSpaHooks, 50);
   }
-
-  if (document.readyState === 'complete') {
-    setTimeout(onReady, 50);
-  } else {
-    document.addEventListener('DOMContentLoaded', onReady);
-  }
+  if (document.readyState === 'complete') setTimeout(onReady, 50);
+  else document.addEventListener('DOMContentLoaded', onReady);
 })();

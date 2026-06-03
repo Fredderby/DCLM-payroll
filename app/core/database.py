@@ -62,6 +62,24 @@ def init_db():
         # Run schema migrations for tables that might have been altered
         # UploadHistory: add month column if missing
         try:
+            conn.execute(text("ALTER TABLE email_logs ADD COLUMN net_salary FLOAT DEFAULT 0"))
+            conn.commit()
+            logger.info("Added net_salary column to email_logs table.")
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE email_logs ADD COLUMN employee_number VARCHAR(50) DEFAULT NULL"))
+            conn.commit()
+            logger.info("Added employee_number column to email_logs table.")
+        except Exception:
+            conn.rollback()
+        try:
+            conn.execute(text("ALTER TABLE email_logs ADD COLUMN error_message TEXT DEFAULT NULL"))
+            conn.commit()
+            logger.info("Added error_message column to email_logs table.")
+        except Exception:
+            conn.rollback()
+        try:
             conn.execute(text("ALTER TABLE upload_history ADD COLUMN month VARCHAR(20) DEFAULT NULL"))
             conn.commit()
             logger.info("Added 'month' column to upload_history table.")

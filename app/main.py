@@ -151,7 +151,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         from app.models.payroll import PayrollRecord
         from datetime import datetime
         from app.services.cache_service import get_cache, set_cache
-        
         cache_key = "dash"
         cached = get_cache(cache_key)
         if cached:
@@ -185,6 +184,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             employees = {e.name: e for e in db.query(Employee).filter(Employee.name.in_(employee_names)).all()}
             for p in recent_payslips:
                 p.employee = employees.get(p.employee_name)
+            
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
         
         template = templates.get_template("dashboard.html")
@@ -515,14 +515,13 @@ async def staff_page(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/staff/template/download")
 async def download_employee_template(request: Request, db: Session = Depends(get_db)):
-    """Download a CSV template for employee bulk upload"""
+    """Download a CSV template for employee bulk upload - rebuilt for reliability."""
     try:
-        current_user = get_current_user_web(request, db)
+        get_current_user_web(request, db)
     except Exception:
         return JSONResponse(status_code=401, content={"error": "Not authenticated"})
     import csv
     import io
-    import tempfile
     
     fieldnames = [
         "employee_number", "name", "email", "function", "designation",
@@ -1639,11 +1638,11 @@ async def default_loan(loan_id: int, db: Session = Depends(get_db)):
     
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
-        return {"success": False, "message": "Loan not found"}
+        return JSONResponse(content={"success": False, "message": "Loan not found"}, status_code=404)
     
     loan.status = "Defaulted"
     db.commit()
-    return {"success": True, "message": "Loan marked as defaulted"}
+    return JSONResponse(content={"success": True, "message": "Loan marked as defaulted"})
 
 @app.post("/loans/delete/{loan_id}")
 async def delete_loan(request: Request, loan_id: int, db: Session = Depends(get_db)):
@@ -1771,8 +1770,7 @@ async def reports_page(request: Request, db: Session = Depends(get_db)):
     from app.models.payroll import PayrollRecord
     from app.models.employee import Employee
     from app.services.cache_service import get_cache, set_cache
-    from sqlalchemy import func
-    
+        
     cache_key = "reports_data"
     cached = get_cache(cache_key)
     if cached:
@@ -1939,8 +1937,7 @@ async def month_summary(request: Request, month: str = "", db: Session = Depends
         return JSONResponse({"error": "Month parameter required"}, status_code=400)
     
     from app.models.payroll import PayrollRecord
-    from sqlalchemy import func
-    
+        
     try:
         records = db.query(PayrollRecord).filter(PayrollRecord.month == month).all()
         count = len(records)
@@ -2036,7 +2033,7 @@ async def employee_detail(request: Request, employee_id: int, db: Session = Depe
     
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
-        return {"error": "Employee not found"}
+        return JSONResponse(content={"error": "Employee not found"}, status_code=404)
     
     return {
         "id": emp.id,
@@ -2103,6 +2100,62 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
         print(f"send_single_payslip ERROR: {e}")
         traceback.print_exc()
         return JSONResponse(content={"success": False, "error": str(e)})
+
+
+@app.post("/payslips/{log_id}/resend")
+async def resend_payslip(request: Request, log_id: int, db: Session = Depends(get_db)):
+    """Resend a failed payslip by EmailLog ID."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse(content={"success": False, "error": "Not authenticated"}, status_code=401)
+
+    from app.models.email_log import EmailLog
+    from app.models.payroll import PayrollRecord
+    from app.models.employee import Employee
+    from app.services.pdf_service import generate_payslip_pdf
+    from app.services.email_service import send_payslip_email
+    from datetime import datetime
+
+    log_entry = db.query(EmailLog).filter(EmailLog.id == log_id).first()
+    if not log_entry:
+        return JSONResponse(content={"success": False, "error": "Log entry not found"}, status_code=404)
+
+    emp = db.query(Employee).filter(Employee.id == log_entry.employee_id).first()
+    if not emp:
+        return JSONResponse(content={"success": False, "error": "Employee not found"})
+
+    record = db.query(PayrollRecord).filter(
+        PayrollRecord.month == log_entry.month,
+        PayrollRecord.employee_name == log_entry.employee_name
+    ).first()
+    if not record:
+        return JSONResponse(content={"success": False, "error": "Payroll record not found"})
+
+    # Generate PDF if not exists
+    pdf_path = record.pdf_generated
+    if not pdf_path or not os.path.exists(pdf_path):
+        pdf_path = generate_payslip_pdf(db, record.id)
+        if pdf_path:
+            record.pdf_generated = pdf_path
+            db.commit()
+
+    if not pdf_path or not os.path.exists(pdf_path):
+        return JSONResponse(content={"success": False, "error": "Failed to generate PDF"})
+
+    # Send email
+    success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month)
+
+    # Update log entry
+    log_entry.status = "sent" if success else "failed"
+    log_entry.error_message = None if success else error_msg
+    log_entry.sent_at = datetime.utcnow()
+    db.commit()
+
+    if success:
+        return JSONResponse(content={"success": True, "message": "Payslip resent to " + emp.email})
+    else:
+        return JSONResponse(content={"success": False, "error": error_msg})
 
 
 @app.get("/logout")

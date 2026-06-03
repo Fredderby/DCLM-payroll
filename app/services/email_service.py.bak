@@ -46,31 +46,16 @@ class EmailService:
             message["To"] = recipient_email
             message["Subject"] = f"Payslip - {month}"
 
-            # Format payroll month to "Month YYYY" if needed
-            display_month = month
-            month_names = ["", "January", "February", "March", "April", "May", "June",
-                          "July", "August", "September", "October", "November", "December"]
-            if month and "-" in month:
-                parts = month.split("-")
-                if len(parts) == 2:
-                    p0, p1 = parts[0].strip(), parts[1].strip()
-                    if p0.isdigit() and len(p0) == 4:
-                        mn = int(p1.zfill(2))
-                        display_month = f"{month_names[mn] if 1 <= mn <= 12 else p1} {p0}"
-                    else:
-                        mn = int(p0.zfill(2))
-                        display_month = f"{month_names[mn] if 1 <= mn <= 12 else p0} {p1}"
-
             body = f"""Dear {employee_name},
 
-Your payslip for {display_month} is attached. Please review the details carefully.
+Your payslip for {month} is attached. Please review the details carefully.
 
 Net Salary: GHS {net_salary:,.2f}
 
-If you have any questions, please contact the Head of Finance.
+If you have any questions, please contact the Human Resources department.
 
 Best regards,
-Head of Finance"""
+DCLM Payroll Management System"""
 
             message.attach(MIMEText(body, "plain"))
 
@@ -98,10 +83,9 @@ Head of Finance"""
             return True, "Email sent successfully"
         except Exception as e:
             import traceback
-            error_msg = f"{type(e).__name__}: {e}"
-            logger.error(f"SMTP send failed: {error_msg}", exc_info=True)
+            logger.error(f"SMTP send failed: {e}", exc_info=True)
             traceback.print_exc()
-            return False, error_msg
+            return False, str(e)
 
     @staticmethod
     async def send_bulk_payslips(payroll_records, db_session):
@@ -226,42 +210,6 @@ Head of Finance"""
     async def send_email(to_email: str, subject: str, body: str):
         """Legacy function for backwards compatibility"""
         return await EmailService.send_notification(to_email, subject, body)
-
-async def send_single_and_log(employee_id: int, employee_name: str, employee_number: str,
-                               recipient_email: str, payroll_id: int, month: str,
-                               net_salary: float, pdf_path: str, db_session):
-    """Send a single payslip email and log the result to EmailLog table."""
-    try:
-        success, message = await EmailService.send_payslip(
-            recipient_email=recipient_email,
-            employee_name=employee_name,
-            month=month or "",
-            pdf_path=pdf_path,
-            net_salary=net_salary
-        )
-        
-        log = EmailLog(
-            employee_id=employee_id,
-            employee_name=employee_name,
-            employee_number=employee_number or "",
-            payroll_id=payroll_id,
-            recipient_email=recipient_email,
-            status="sent" if success else "failed",
-            month=month,
-            net_salary=net_salary,
-            error_message=None if success else message,
-            sent_at=datetime.utcnow()
-        )
-        db_session.add(log)
-        db_session.commit()
-        return success, message
-    except Exception as e:
-        print(f"send_single_and_log error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False, str(e)
-
-
 
 
 async def send_email(to_email: str, subject: str, body: str):
