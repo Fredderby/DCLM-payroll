@@ -130,7 +130,7 @@
             <button type="submit" class="btn btn-sm btn-outline-primary" title="Record monthly payment"><i class="fas fa-check-circle"></i> Pay</button>
           </form>
           <a href="/loans/complete/{{ loan.id }}" class="btn btn-sm btn-outline-success" onclick="return confirm('Mark this loan as completed?')"><i class="fas fa-check-double"></i> Complete</a>
-          <a href="/loans/delete/{{ loan.id }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this loan record? This action cannot be undone.')"><i class="fas fa-trash"></i> Delete</a>
+          <form method="POST" action="/loans/delete/{{ loan.id }}" style="display:inline;" onsubmit="return confirm('Delete this loan record? Cannot be undone.')"><button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i> Delete</button></form>
         </div>
       </div>
         <button class="btn btn-sm loan-pay-btn" data-id="{{ loan.id }}" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-circle" style="color:#059669;"></i> Pay</button>

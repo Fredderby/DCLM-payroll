@@ -34,18 +34,31 @@ def tojson_filter(value):
 
 # Custom Jinja filters
 def format_month(value):
-    """Convert '2024-01' or '2024-01-31' to readable month name"""
+    """Convert '2024-01', '01-2024', '10-2026', or 'January 2024' to readable month name"""
     if not value:
         return value
     import datetime
+    month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                   'July', 'August', 'September', 'October', 'November', 'December']
     try:
-        parts = str(value).split('-')
-        year = parts[0]
-        month_num = parts[1].zfill(2)
-        month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                       'July', 'August', 'September', 'October', 'November', 'December']
-        month_name = month_names[int(month_num)] if 1 <= int(month_num) <= 12 else month_num
-        return f"{month_name} {year}"
+        val = str(value).strip()
+        # Already formatted as 'Month YYYY'
+        if any(m in val for m in month_names if m):
+            return val
+        parts = val.split('-')
+        if len(parts) == 2:
+            # Try both YYYY-MM and MM-YYYY
+            p0 = parts[0].strip()
+            p1 = parts[1].strip()
+            if p0.isdigit() and len(p0) == 4:  # YYYY-MM
+                year = p0
+                month_num = p1.zfill(2)
+            else:  # MM-YYYY
+                month_num = p0.zfill(2)
+                year = p1
+            month_name = month_names[int(month_num)] if 1 <= int(month_num) <= 12 else month_num
+            return f"{month_name} {year}"
+        return val
     except:
         return value
 
@@ -421,6 +434,14 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             if missing_emp_ids:
                 missing_emps = db.query(Employee).filter(Employee.id.in_(missing_emp_ids)).order_by(Employee.name).all()
                 missing_employees = [e for e in missing_emps if e.name]
+            
+            # Invalidate dashboard cache
+            from app.services.cache_service import clear_cache
+            clear_cache()
+            
+            # Clear dashboard cache so stats update immediately
+            from app.services.cache_service import clear_cache
+            clear_cache()
             
             # Record upload history
             try:

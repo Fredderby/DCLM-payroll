@@ -7,6 +7,15 @@
 
 {% block extra_head %}
 <style>
+  /* Employee edit modal responsive fixes */
+  .modal-body .form-control, .modal-body .form-select { font-size: 14px; }
+  .modal-body .row { margin-bottom: 12px; }
+  @media (max-width: 576px) {
+    .modal-dialog { margin: 10px; }
+    .modal-body { padding: 16px; }
+  }
+</style>
+<style>
 /* ========== Employee Card Styles ========== */
 .emp-card {
   background: var(--bg-card);
