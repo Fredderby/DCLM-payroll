@@ -434,302 +434,188 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         tmp.write(await file.read())
         tmp_path = tmp.name
 
-    max_retries = 3
-    retry_delay = 2
-    
-    for attempt in range(max_retries):
-        try:
-            db.close()
-            from app.core.database import SessionLocal
-            db = SessionLocal()
-            
-            records = process_payroll_excel(tmp_path, month, filename=original_filename)
-            processed = 0
-            errors = []
-            unmatched_records = []  # Names that didn't match any registered employee
-            
-            # Track IDs of employees that appear in the file
-            matched_emp_ids = set()
-            
-            logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}'")
-            
-            for record in records:
-                skip_reason = None
-                try:
-                    emp_no = str(record.get('employee_number', '') or '').strip()
-                    emp_email = str(record.get('email', '') or '').strip()
-                    emp_name = str(record.get('employee_name', '') or '').strip()
-                    # Normalize: collapse multiple spaces, remove leading/trailing spaces
-                    emp_name_norm = ' '.join(emp_name.split()).upper()
-                    
-                    if not emp_name_norm:
-                        skip_reason = "Missing employee name"
-                        unmatched_records.append({
-                            'name': emp_no or emp_email or 'Unknown',
-                            'number': emp_no,
-                            'email': emp_email,
-                            'reason': skip_reason
-                        })
-                        print(f"SKIP: {skip_reason} - emp_no={repr(emp_no)}")
-                        continue
-                    
-                    employee = None
-                    # Build lookup dict for faster matching
-                    all_emps = db.query(Employee).all()
-                    name_lookup = {}
-                    for e in all_emps:
-                        norm = ' '.join((e.name or '').split()).upper()
-                        name_lookup[norm] = e
-                    
-                    # PRIMARY: Match by employee name (case-insensitive, normalized)
-                    if emp_name_norm in name_lookup:
-                        employee = name_lookup[emp_name_norm]
-                    if not employee and emp_name_norm:
-                        # Try partial match
-                        employee = db.query(Employee).filter(
-                            Employee.name.ilike(f'%{emp_name}%')
-                        ).first()
-                    if not employee and emp_name_norm:
-                        # Try matching by individual name parts
-                        name_parts = emp_name_norm.split()
-                        for part in name_parts:
-                            if len(part) > 2:
-                                for norm, e in name_lookup.items():
-                                    if part in norm:
-                                        employee = e
-                                        break
-                                if employee:
-                                    break
-                    # FALLBACK: Match by employee number if name didn't match
-                    if not employee and emp_no:
-                        employee = db.query(Employee).filter(Employee.employee_number == emp_no).first()
-                    # FALLBACK: Match by email if still no match
-                    if not employee and emp_email:
-                        employee = db.query(Employee).filter(Employee.email == emp_email).first()
-                    
-                    if not employee:
-                        # No match found - skip and list for correction
-                        skip_reason = f"No employee found matching name '{emp_name}'"
-                        unmatched_records.append({
-                            'name': emp_name or emp_no or emp_email or 'Unknown',
-                            'number': emp_no,
-                            'email': emp_email,
-                            'reason': skip_reason
-                        })
-                        print(f"SKIP: {skip_reason} - emp_no={repr(emp_no)} emp_email={repr(emp_email)}")
-                        continue
-                    
-                    print(f"MATCH OK: emp_name={repr(emp_name)} -> {employee.name} (ID={employee.id})")
-                    
-                    # Existing employee matched - update details from file if provided
-                    if record.get('employee_name'): 
-                        employee.name = str(record['employee_name']).strip()
-                    if record.get('function'): 
-                        employee.function = str(record['function']).strip()
-                    if record.get('designation'): 
-                        employee.designation = str(record['designation']).strip()
-                    if record.get('location'): 
-                        employee.location = str(record['location']).strip()
-                    if record.get('bank_account'):
-                        from app.services.pdf_service import parse_bank_account
-                        bn, bk, bb = parse_bank_account(record.get('bank_account', ''))
-                        if bn: employee.bank_number = bn
-                        if bk: employee.bank_name = bk
-                        if bb: employee.bank_branch = bb
-                    db.commit()
-                    
-                    matched_emp_ids.add(employee.id)
-                    
-                    # Determine staff_category from record
-                    staff_category = record.get('staff_category', 'pastoral')
-                    
-                    # Check if payroll record already exists for this employee + month
-                    existing_payroll = db.query(PayrollRecord).filter(
-                        PayrollRecord.employee_name == employee.name,
-                        PayrollRecord.month == month
-                    ).first()
-                    
-                    if existing_payroll:
-                        # Update existing record instead of creating duplicate
-                        existing_payroll.staff_category = staff_category
-                        existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
-                        existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
-                        existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
-                        existing_payroll.cola = record.get('cola', existing_payroll.cola)
-                        existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
-                        existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
-                        # Non-Pastoral earnings
-                        existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
-                        existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
-                        existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
-                        existing_payroll.paye = record.get('paye', existing_payroll.paye)
-                        existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
-                        existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
-                        existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
-                        existing_payroll.employer_contribution = record.get('employer_contribution', existing_payroll.employer_contribution)
-                        existing_payroll.employee_pf = record.get('employee_pf', existing_payroll.employee_pf)
-                        existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
-                        from app.services.payroll_service import calculate_payroll_totals
-                        earnings = {
-                            'basic_salary': existing_payroll.basic_salary,
-                            'meals_monthly': existing_payroll.meals_monthly,
-                            'responsibility_allowance': existing_payroll.responsibility_allowance,
-                            'cola': existing_payroll.cola,
-                            'leave_allowance': existing_payroll.leave_allowance,
-                            'other_earnings': existing_payroll.other_earnings,
-                            'rent_monthly': existing_payroll.rent_monthly,
-                            'utility_monthly': existing_payroll.utility_monthly,
-                            'transport_monthly': existing_payroll.transport_monthly,
-                        }
-                        deductions = {
-                            'paye': existing_payroll.paye,
-                            'tithe': existing_payroll.tithe,
-                            'future_savings': existing_payroll.future_savings,
-                            'other_deductions': existing_payroll.other_deductions,
-                            'employee_pf': existing_payroll.employee_pf,
-                            'ssnit_deduction': existing_payroll.ssnit_deduction,
-                        }
-                        total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
-                        existing_payroll.total_earnings = total_earnings
-                        existing_payroll.total_deductions = total_deductions
-                        existing_payroll.net_salary = net_salary
-                        # Clear old PDF so it gets regenerated on demand
-                        if existing_payroll.pdf_generated:
-                            try:
-                                if os.path.exists(existing_payroll.pdf_generated):
-                                    os.remove(existing_payroll.pdf_generated)
-                            except:
-                                pass
-                            existing_payroll.pdf_generated = None
-                        db.commit()
-                    else:
-                        # Create payroll record (no PDF generation during upload)
-                        # Map record fields to employee object for create_payroll_record
-                        employee.name = record.get('employee_name', employee.name)
-                        employee.email = record.get('email', employee.email)
-                        employee.function = record.get('function', employee.function)
-                        employee.designation = record.get('designation', employee.designation)
-                        employee.location = record.get('location', employee.location)
-                        employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
-                        employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
-                        dj_val = record.get('date_joined', None)
-                        if dj_val and str(dj_val).strip().lower() not in ('nan', 'none', ''):
-                            parsed_dj = parse_date_joined(str(dj_val))
-                            if parsed_dj:
-                                employee.date_joined = parsed_dj
-                        else:
-                            employee.date_joined = getattr(employee, 'date_joined', None)
-                        payroll_record = create_payroll_record(db, employee, record)
-                        db.commit()
-                    
-                    processed += 1
-                except Exception as e:
-                    db.rollback()
-                    errors.append(f"Error processing {record.get('employee_name', 'Unknown')}: {str(e)[:80]}")
-            
-            # Identify registered employees NOT in this upload (possibly terminated)
-            all_emp_ids = {r.id for r in db.query(Employee.id).all()}
-            missing_emp_ids = all_emp_ids - matched_emp_ids
-            missing_employees = []
-            if missing_emp_ids:
-                missing_emps = db.query(Employee).filter(Employee.id.in_(missing_emp_ids)).order_by(Employee.name).all()
-                missing_employees = [e for e in missing_emps if e.name]
-            
-            # Invalidate dashboard cache
-            from app.services.cache_service import clear_cache
-            clear_cache()
-            
-            # Clear dashboard cache so stats update immediately
-            from app.services.cache_service import clear_cache
-            clear_cache()
-            
-            # Record upload history with detailed tracking
-            try:
-                import json
-                skip_details = []
-                for ur in unmatched_records:
-                    skip_details.append({
-                        'name': ur.get('name', 'Unknown'),
-                        'employee_number': ur.get('number', ''),
-                        'email': ur.get('email', ''),
-                        'reason': ur.get('reason', 'No matching employee found')
-                    })
-                for mer in missing_employees:
-                    skip_details.append({
-                        'name': mer.name,
-                        'employee_number': mer.employee_number,
-                        'email': mer.email,
-                        'reason': 'Registered employee not found in upload file (may be terminated)'
-                    })
-                
-                total_records_in_file = len(records) if records else 0
-                
-                # Detect payroll type from file name
-                fname_lower = original_filename.lower()
-                if 'pastoral' in fname_lower and 'non' not in fname_lower:
-                    payroll_type = "Pastoral"
-                elif 'non' in fname_lower and 'pastoral' in fname_lower:
-                    payroll_type = "Non-Pastoral"
-                else:
-                    payroll_type = "Mixed/Unknown"
-                
-                upload_history = UploadHistory(
-                    file_name=original_filename,
-                    uploaded_by=current_user.id,
-                    month=month,
-                    total_employees=total_records_in_file,
-                    imported_count=processed,
-                    skipped_count=len(unmatched_records) + len(missing_employees),
-                    skip_reasons=json.dumps(skip_details),
-                    status="success" if processed > 0 and len(errors) == 0 else "partial_failure" if processed > 0 else "failed"
-                )
-                db.add(upload_history)
-                db.commit()
-            except Exception as log_err:
-                print(f"Warning: Could not log upload history: {log_err}")
-                db.rollback()
-            
-            # Build summary
-            summary_parts = []
-            if processed:
-                summary_parts.append(f"Successfully uploaded {processed} payroll record(s) for {month}")
-            if unmatched_records:
-                summary_parts.append(f"{len(unmatched_records)} name(s) did not match any registered employee (skipped)")
-            if missing_employees:
-                summary_parts.append(f"{len(missing_employees)} registered employee(s) not in this file (may be terminated)")
-            
-            msg = ". ".join(summary_parts) + "." if summary_parts else "No data processed."
+    try:
+        records = process_payroll_excel(tmp_path, month, filename=original_filename)
+        processed = 0
+        errors = []
+        unmatched_records = []  # Names that didn't match any registered employee
+        
+        # Track IDs of employees that appear in the file
+        matched_emp_ids = set()
 
-            template = templates.get_template("upload.html")
-            rendered = template.render({
-                "user": current_user,
-                "message": msg,
-                "errors": errors[:5],
-                "unmatched_records": unmatched_records,
-                "missing_employees": missing_employees,
-                "processed_count": processed
-            })
-            return HTMLResponse(content=rendered, media_type="text/html")
-            
-        except ValueError as e:
-            db.rollback()
-            template = templates.get_template("upload.html")
-            rendered = template.render({"user": current_user, "error": str(e)})
-            return HTMLResponse(content=rendered, media_type="text/html")
-        except Exception as e:
-            db.rollback()
-            template = templates.get_template("upload.html")
-            rendered = template.render({"user": current_user, "error": f"Upload failed due to an unexpected error. Please verify your file format and try again."})
-            return HTMLResponse(content=rendered, media_type="text/html")
-        finally:
+        logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}'")
+
+        for record in records:
+            skip_reason = None
             try:
-                os.unlink(tmp_path)
-            except:
-                pass
-    
-    template = templates.get_template("upload.html")
-    rendered = template.render({"user": current_user, "error": "Upload failed after multiple retry attempts"})
-    return HTMLResponse(content=rendered, media_type="text/html")
+                emp_no = str(record.get('employee_number', '') or '').strip()
+                emp_email = str(record.get('email', '') or '').strip()
+                emp_name = str(record.get('employee_name', '') or '').strip()
+                emp_name_norm = ' '.join(emp_name.split()).upper()
+
+                if not emp_name_norm:
+                    unmatched_records.append({'name': emp_no or emp_email or 'Unknown', 'number': emp_no, 'email': emp_email, 'reason': 'Missing employee name'})
+                    continue
+
+                employee = None
+                all_emps = db.query(Employee).all()
+                name_lookup = {}
+                for e in all_emps:
+                    norm = ' '.join((e.name or '').split()).upper()
+                    name_lookup[norm] = e
+
+                if emp_name_norm in name_lookup:
+                    employee = name_lookup[emp_name_norm]
+                if not employee:
+                    employee = db.query(Employee).filter(Employee.name.ilike(f'%{emp_name}%')).first()
+                if not employee:
+                    for part in emp_name_norm.split():
+                        if len(part) > 2:
+                            for norm, e in name_lookup.items():
+                                if part in norm:
+                                    employee = e
+                                    break
+                            if employee: break
+                if not employee and emp_no:
+                    employee = db.query(Employee).filter(Employee.employee_number == emp_no).first()
+                if not employee and emp_email:
+                    employee = db.query(Employee).filter(Employee.email == emp_email).first()
+
+                if not employee:
+                    unmatched_records.append({'name': emp_name, 'number': emp_no, 'email': emp_email, 'reason': f"No employee found matching name '{emp_name}'"})
+                    continue
+
+                if record.get('employee_name'): employee.name = str(record['employee_name']).strip()
+                if record.get('function'): employee.function = str(record['function']).strip()
+                if record.get('designation'): employee.designation = str(record['designation']).strip()
+                if record.get('location'): employee.location = str(record['location']).strip()
+                if record.get('bank_account'):
+                    from app.services.pdf_service import parse_bank_account
+                    bn, bk, bb = parse_bank_account(record.get('bank_account', ''))
+                    if bn: employee.bank_number = bn
+                    if bk: employee.bank_name = bk
+                    if bb: employee.bank_branch = bb
+                db.commit()
+
+                matched_emp_ids.add(employee.id)
+                staff_category = record.get('staff_category', 'pastoral')
+
+                existing_payroll = db.query(PayrollRecord).filter(
+                    PayrollRecord.employee_name == employee.name, PayrollRecord.month == month
+                ).first()
+
+                if existing_payroll:
+                    existing_payroll.staff_category = staff_category
+                    existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
+                    existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
+                    existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
+                    existing_payroll.cola = record.get('cola', existing_payroll.cola)
+                    existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
+                    existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
+                    existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
+                    existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
+                    existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
+                    existing_payroll.paye = record.get('paye', existing_payroll.paye)
+                    existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
+                    existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
+                    existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
+                    existing_payroll.employer_contribution = record.get('employer_contribution', existing_payroll.employer_contribution)
+                    existing_payroll.employee_pf = record.get('employee_pf', existing_payroll.employee_pf)
+                    existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
+                    from app.services.payroll_service import calculate_payroll_totals
+                    earnings = {'basic_salary': existing_payroll.basic_salary, 'meals_monthly': existing_payroll.meals_monthly,
+                        'responsibility_allowance': existing_payroll.responsibility_allowance, 'cola': existing_payroll.cola,
+                        'leave_allowance': existing_payroll.leave_allowance, 'other_earnings': existing_payroll.other_earnings,
+                        'rent_monthly': existing_payroll.rent_monthly, 'utility_monthly': existing_payroll.utility_monthly,
+                        'transport_monthly': existing_payroll.transport_monthly}
+                    deductions = {'paye': existing_payroll.paye, 'tithe': existing_payroll.tithe,
+                        'future_savings': existing_payroll.future_savings, 'other_deductions': existing_payroll.other_deductions,
+                        'employee_pf': existing_payroll.employee_pf, 'ssnit_deduction': existing_payroll.ssnit_deduction}
+                    total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
+                    existing_payroll.total_earnings = total_earnings
+                    existing_payroll.total_deductions = total_deductions
+                    existing_payroll.net_salary = net_salary
+                    if existing_payroll.pdf_generated:
+                        try:
+                            if os.path.exists(existing_payroll.pdf_generated): os.remove(existing_payroll.pdf_generated)
+                        except: pass
+                        existing_payroll.pdf_generated = None
+                    db.commit()
+                else:
+                    employee.name = record.get('employee_name', employee.name)
+                    employee.email = record.get('email', employee.email)
+                    employee.function = record.get('function', employee.function)
+                    employee.designation = record.get('designation', employee.designation)
+                    employee.location = record.get('location', employee.location)
+                    employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
+                    employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
+                    dj_val = record.get('date_joined', None)
+                    if dj_val and str(dj_val).strip().lower() not in ('nan', 'none', ''):
+                        parsed_dj = parse_date_joined(str(dj_val))
+                        if parsed_dj: employee.date_joined = parsed_dj
+                    else: employee.date_joined = getattr(employee, 'date_joined', None)
+                    payroll_record = create_payroll_record(db, employee, record)
+                    db.commit()
+
+                processed += 1
+            except Exception as e:
+                db.rollback()
+                errors.append(f"Error processing {record.get('employee_name', 'Unknown')}: {str(e)[:80]}")
+
+        all_emp_ids = {r.id for r in db.query(Employee.id).all()}
+        missing_emp_ids = all_emp_ids - matched_emp_ids
+        missing_employees = []
+        if missing_emp_ids:
+            missing_emps = db.query(Employee).filter(Employee.id.in_(missing_emp_ids)).order_by(Employee.name).all()
+            missing_employees = [e for e in missing_emps if e.name]
+
+        from app.services.cache_service import clear_cache
+        clear_cache()
+
+        try:
+            import json
+            skip_details = []
+            for ur in unmatched_records:
+                skip_details.append({'name': ur.get('name', 'Unknown'), 'employee_number': ur.get('number', ''), 'email': ur.get('email', ''), 'reason': ur.get('reason', 'No matching employee found')})
+            for mer in missing_employees:
+                skip_details.append({'name': mer.name, 'employee_number': mer.employee_number, 'email': mer.email, 'reason': 'Registered employee not found in upload file (may be terminated)'})
+            total_records_in_file = len(records) if records else 0
+            upload_history = UploadHistory(
+                file_name=original_filename, uploaded_by=current_user.id, month=month,
+                total_employees=total_records_in_file, imported_count=processed,
+                skipped_count=len(unmatched_records) + len(missing_employees),
+                skip_reasons=json.dumps(skip_details),
+                status="success" if processed > 0 and len(errors) == 0 else "partial_failure" if processed > 0 else "failed"
+            )
+            db.add(upload_history)
+            db.commit()
+        except Exception as log_err:
+            print(f"Warning: Could not log upload history: {log_err}")
+            db.rollback()
+
+        summary_parts = []
+        if processed: summary_parts.append(f"Successfully uploaded {processed} payroll record(s) for {month}")
+        if unmatched_records: summary_parts.append(f"{len(unmatched_records)} name(s) did not match any registered employee (skipped)")
+        if missing_employees: summary_parts.append(f"{len(missing_employees)} registered employee(s) not in this file (may be terminated)")
+        msg = ". ".join(summary_parts) + "." if summary_parts else "No data processed."
+
+        template = templates.get_template("upload.html")
+        rendered = template.render({
+            "user": current_user, "message": msg, "errors": errors[:5],
+            "unmatched_records": unmatched_records, "missing_employees": missing_employees, "processed_count": processed
+        })
+        return HTMLResponse(content=rendered, media_type="text/html")
+
+    except Exception as e:
+        db.rollback()
+        template = templates.get_template("upload.html")
+        rendered = template.render({"user": current_user, "error": f"Upload failed: {str(e)[:200]}"})
+        return HTMLResponse(content=rendered, media_type="text/html")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except:
+            pass
 
 @app.get("/staff", response_class=HTMLResponse)
 async def staff_page(request: Request, db: Session = Depends(get_db)):
