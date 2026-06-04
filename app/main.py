@@ -179,11 +179,19 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             
             # Recent payslips (last 5) - optimized with eager loading
             recent_payslips = db.query(PayrollRecord).order_by(PayrollRecord.id.desc()).limit(5).all()
-            # Use a single query for all employees to avoid N+1
-            employee_names = list(set(p.employee_name for p in recent_payslips))
-            employees = {e.name: e for e in db.query(Employee).filter(Employee.name.in_(employee_names)).all()}
+            # Build employee lookup with normalized keys (whitespace-collapsed, uppercased)
+            all_emps_for_dash = db.query(Employee).all()
+            employees = {}
+            for e in all_emps_for_dash:
+                employees[e.name] = e
+                employees[' '.join((e.name or '').split()).upper()] = e
             for p in recent_payslips:
-                p.employee = employees.get(p.employee_name)
+                emp_name = (p.employee_name or '').strip()
+                emp = employees.get(emp_name)
+                if not emp:
+                    normalized = ' '.join(emp_name.split()).upper()
+                    emp = employees.get(normalized)
+                p.employee = emp
             
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
         
@@ -1170,25 +1178,22 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         total_payslips = query.count()
         payslips = query.order_by(PayrollRecord.employee_name).all()
         
-        # Batch-load employee info (N+1 fix) with robust matching
-        all_employees = {e.name: e for e in db.query(Employee).all()}
+        # Build employee lookup with normalized keys (whitespace-collapsed, uppercased)
+        all_emps = db.query(Employee).all()
+        all_employees = {}
+        for e in all_emps:
+            # Store keyed by original name AND normalized name
+            all_employees[e.name] = e
+            all_employees[' '.join((e.name or '').split()).upper()] = e
+        
         for p in payslips:
             emp_name = (p.employee_name or '').strip()
+            # Try exact match first
             emp = all_employees.get(emp_name)
             if not emp:
-                # Try case-insensitive match
-                emp_name_upper = emp_name.upper()
-                for e_name, e_obj in all_employees.items():
-                    if (e_name or '').upper() == emp_name_upper:
-                        emp = e_obj
-                        break
-            if not emp:
-                # Try normalized whitespace match
-                emp_name_norm = ' '.join(emp_name.split())
-                for e_name, e_obj in all_employees.items():
-                    if ' '.join((e_name or '').split()) == emp_name_norm:
-                        emp = e_obj
-                        break
+                # Try normalized whitespace, case-insensitive match
+                normalized = ' '.join(emp_name.split()).upper()
+                emp = all_employees.get(normalized)
             p.employee = emp
         
         # Generate stats from all records
