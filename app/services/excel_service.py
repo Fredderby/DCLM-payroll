@@ -5,6 +5,8 @@ import re
 
 def normalize_col(name: str) -> str:
     """Normalize column name: strip, lowercase, remove punctuation, collapse spaces"""
+    if not isinstance(name, str):
+        name = str(name)
     name = name.strip().lower()
     # Remove punctuation (keep underscores, letters, digits)
     name = re.sub(r'[^\w\s]', '', name)
@@ -14,12 +16,26 @@ def normalize_col(name: str) -> str:
 
 def process_payroll_excel(file_path: str, month: str = None, filename: str = ""):
     """
-    Process payroll Excel file with flexible column mapping.
+    Process payroll Excel/CSV file with flexible column mapping.
     Supports various column names and extracts payroll data.
     Auto-detects month from filename if not provided.
+    
+    Returns a list of record dictionaries.
+    Raises ValueError with a descriptive message on failure.
     """
+    import os as _os
+    
+    # Validate file exists
+    if not _os.path.exists(file_path):
+        raise ValueError("File not found at the specified path.")
+    
+    # Validate file extension
+    ext = _os.path.splitext(file_path)[1].lower()
+    if ext not in ('.xlsx', '.xls', '.csv'):
+        raise ValueError(f"Unsupported file type: '{ext}'. Only .xlsx and .csv files are supported.")
+    
+    # Auto-detect month from filename
     if month is None and filename:
-        # Auto-detect month from filename
         import re as _re
         month_patterns = [
             (r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', lambda m: f"{m.group(1)} {m.group(2)}"),
@@ -37,6 +53,23 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
     if month is None:
         month = datetime.now().strftime("%B %Y")
 
+    # Read file into DataFrame
+    try:
+        if ext == '.csv':
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+    except Exception as e:
+        raise ValueError(f"Could not read the file. Please ensure it is a valid {ext.upper()} file. Error: {str(e)[:100]}")
+    
+    # Validate DataFrame is not empty
+    if df is None or df.empty:
+        raise ValueError("The uploaded file is empty. Please upload a file with data.")
+    
+    # Validate at least one row of data (excluding header)
+    if len(df) == 0:
+        raise ValueError("The uploaded file contains a header but no data rows.")
+    
     # Normalize column names - strip punctuation like dots, dashes, etc.
     df.columns = [normalize_col(c) for c in df.columns]
 
@@ -76,10 +109,7 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
         'ssnit_deduction': ['ssnit_deduction', 'ssnit', 'ssnit_55', 'ssnit_5_5', 'ssnit_5.5', 'ssnit_5.5%', 'ssnit%'],
     }
 
-    # Detect staff category from column headers
-    pastoral_indicators = ['responsibility_allowance']
-    non_pastoral_indicators = ['monthly_basic_salary', 'rent_monthly', 'utility_monthly', 'transport_monthly', 'employee_pf', 'ssnit_deduction']
-
+    # Build column mapping: for each standard column name, find the actual column in df
     mapped_columns = {}
     for standard_col, possible_cols in column_mappings.items():
         for possible_col in possible_cols:
@@ -87,7 +117,17 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
                 mapped_columns[standard_col] = possible_col
                 break
 
-    # Determine staff category based on detected columns
+    # Validate that a required column (employee_name) exists
+    if 'employee_name' not in mapped_columns:
+        raise ValueError(
+            "Invalid template structure: Could not find an 'Employee Name' column. "
+            "Please use the correct payroll template for the staff category."
+        )
+
+    # Detect staff category from column headers
+    pastoral_indicators = ['responsibility_allowance']
+    non_pastoral_indicators = ['monthly_basic_salary', 'rent_monthly', 'utility_monthly', 'transport_monthly', 'employee_pf', 'ssnit_deduction']
+
     has_pastoral = any(indicator in mapped_columns for indicator in pastoral_indicators)
     has_non_pastoral = any(indicator in mapped_columns for indicator in non_pastoral_indicators)
 
@@ -99,55 +139,50 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
         # Default to pastoral if we can't determine
         staff_category = "pastoral"
 
-    # Map actual columns (run again since mapped_columns was already populated above)
-    mapped_columns2 = {}
-    for standard_col, possible_cols in column_mappings.items():
-        for possible_col in possible_cols:
-            if possible_col in df.columns:
-                mapped_columns2[standard_col] = possible_col
-                break
-
     records = []
     for _, row in df.iterrows():
         try:
             # Non-Pastoral: use monthly_basic_salary -> basic_salary
-            np_basic = float(row.get(mapped_columns2.get('monthly_basic_salary'), 0)) if mapped_columns2.get('monthly_basic_salary') else None
+            np_basic = float(row.get(mapped_columns.get('monthly_basic_salary'), 0)) if mapped_columns.get('monthly_basic_salary') else None
             record = {
-                'employee_number': row.get(mapped_columns2.get('employee_number'), ''),
-                'employee_name': row.get(mapped_columns2.get('employee_name'), ''),
-                'email': row.get(mapped_columns2.get('email'), ''),
-                'function': row.get(mapped_columns2.get('function'), ''),
-                'designation': row.get(mapped_columns2.get('designation'), ''),
-                'location': row.get(mapped_columns2.get('location'), ''),
-                'bank_account': row.get(mapped_columns2.get('bank_account'), ''),
-                'date_joined': row.get(mapped_columns2.get('date_joined'), None),
-                'ssnit_number': row.get(mapped_columns2.get('ssnit_number'), ''),
+                'employee_number': str(row.get(mapped_columns.get('employee_number'), '') or ''),
+                'employee_name': str(row.get(mapped_columns.get('employee_name'), '') or ''),
+                'email': str(row.get(mapped_columns.get('email'), '') or ''),
+                'function': str(row.get(mapped_columns.get('function'), '') or ''),
+                'designation': str(row.get(mapped_columns.get('designation'), '') or ''),
+                'location': str(row.get(mapped_columns.get('location'), '') or ''),
+                'bank_account': str(row.get(mapped_columns.get('bank_account'), '') or ''),
+                'date_joined': row.get(mapped_columns.get('date_joined'), None),
+                'ssnit_number': str(row.get(mapped_columns.get('ssnit_number'), '') or ''),
                 'month': month,
                 'staff_category': staff_category,
                 # Earnings
-                'basic_salary': float(row.get(mapped_columns2.get('basic_salary'), np_basic or 0)) if (mapped_columns2.get('basic_salary') or np_basic is not None) else 0,
-                'meals_monthly': float(row.get(mapped_columns2.get('meals_monthly'), 0)) if mapped_columns2.get('meals_monthly') else 0,
-                'responsibility_allowance': float(row.get(mapped_columns2.get('responsibility_allowance'), 0)) if mapped_columns2.get('responsibility_allowance') else 0,
-                'cola': float(row.get(mapped_columns2.get('cola'), 0)) if mapped_columns2.get('cola') else 0,
-                'leave_allowance': float(row.get(mapped_columns2.get('leave_allowance'), 0)) if mapped_columns2.get('leave_allowance') else 0,
-                'other_earnings': float(row.get(mapped_columns2.get('other_earnings'), 0)) if mapped_columns2.get('other_earnings') else 0,
+                'basic_salary': float(row.get(mapped_columns.get('basic_salary'), np_basic or 0)) if (mapped_columns.get('basic_salary') or np_basic is not None) else 0,
+                'meals_monthly': float(row.get(mapped_columns.get('meals_monthly'), 0)) if mapped_columns.get('meals_monthly') else 0,
+                'responsibility_allowance': float(row.get(mapped_columns.get('responsibility_allowance'), 0)) if mapped_columns.get('responsibility_allowance') else 0,
+                'cola': float(row.get(mapped_columns.get('cola'), 0)) if mapped_columns.get('cola') else 0,
+                'leave_allowance': float(row.get(mapped_columns.get('leave_allowance'), 0)) if mapped_columns.get('leave_allowance') else 0,
+                'other_earnings': float(row.get(mapped_columns.get('other_earnings'), 0)) if mapped_columns.get('other_earnings') else 0,
                 # Non-Pastoral specific earnings
-                'rent_monthly': float(row.get(mapped_columns2.get('rent_monthly'), 0)) if mapped_columns2.get('rent_monthly') else 0,
-                'utility_monthly': float(row.get(mapped_columns2.get('utility_monthly'), 0)) if mapped_columns2.get('utility_monthly') else 0,
-                'transport_monthly': float(row.get(mapped_columns2.get('transport_monthly'), 0)) if mapped_columns2.get('transport_monthly') else 0,
+                'rent_monthly': float(row.get(mapped_columns.get('rent_monthly'), 0)) if mapped_columns.get('rent_monthly') else 0,
+                'utility_monthly': float(row.get(mapped_columns.get('utility_monthly'), 0)) if mapped_columns.get('utility_monthly') else 0,
+                'transport_monthly': float(row.get(mapped_columns.get('transport_monthly'), 0)) if mapped_columns.get('transport_monthly') else 0,
                 # Deductions
-                'paye': float(row.get(mapped_columns2.get('paye'), 0)) if mapped_columns2.get('paye') else 0,
-                'tithe': float(row.get(mapped_columns2.get('tithe'), 0)) if mapped_columns2.get('tithe') else 0,
-                'future_savings': float(row.get(mapped_columns2.get('future_savings'), 0)) if mapped_columns2.get('future_savings') else 0,
-                'other_deductions': float(row.get(mapped_columns2.get('other_deductions'), 0)) if mapped_columns2.get('other_deductions') else 0,
-                'employer_contribution': float(row.get(mapped_columns2.get('employer_contribution'), 0)) if mapped_columns2.get('employer_contribution') else 0,
+                'paye': float(row.get(mapped_columns.get('paye'), 0)) if mapped_columns.get('paye') else 0,
+                'tithe': float(row.get(mapped_columns.get('tithe'), 0)) if mapped_columns.get('tithe') else 0,
+                'future_savings': float(row.get(mapped_columns.get('future_savings'), 0)) if mapped_columns.get('future_savings') else 0,
+                'other_deductions': float(row.get(mapped_columns.get('other_deductions'), 0)) if mapped_columns.get('other_deductions') else 0,
+                'employer_contribution': float(row.get(mapped_columns.get('employer_contribution'), 0)) if mapped_columns.get('employer_contribution') else 0,
                 # Non-Pastoral specific deductions
-                'employee_pf': float(row.get(mapped_columns2.get('employee_pf'), 0)) if mapped_columns2.get('employee_pf') else 0,
-                'ssnit_deduction': float(row.get(mapped_columns2.get('ssnit_deduction'), 0)) if mapped_columns2.get('ssnit_deduction') else 0,
+                'employee_pf': float(row.get(mapped_columns.get('employee_pf'), 0)) if mapped_columns.get('employee_pf') else 0,
+                'ssnit_deduction': float(row.get(mapped_columns.get('ssnit_deduction'), 0)) if mapped_columns.get('ssnit_deduction') else 0,
             }
             records.append(record)
         except Exception as e:
             print(f"Error processing row: {e}")
             continue
+
+    if not records:
+        raise ValueError("No valid records could be extracted from the file. Check that the file contains data and uses the correct template format.")
 
     return records

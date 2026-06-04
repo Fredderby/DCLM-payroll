@@ -645,10 +645,15 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             })
             return HTMLResponse(content=rendered, media_type="text/html")
             
+        except ValueError as e:
+            db.rollback()
+            template = templates.get_template("upload.html")
+            rendered = template.render({"user": current_user, "error": str(e)})
+            return HTMLResponse(content=rendered, media_type="text/html")
         except Exception as e:
             db.rollback()
             template = templates.get_template("upload.html")
-            rendered = template.render({"user": current_user, "error": f"Upload failed: {str(e)[:200]}"})
+            rendered = template.render({"user": current_user, "error": f"Upload failed due to an unexpected error. Please verify your file format and try again."})
             return HTMLResponse(content=rendered, media_type="text/html")
         finally:
             try:
