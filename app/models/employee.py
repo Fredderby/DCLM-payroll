@@ -21,7 +21,5 @@ class Employee(Base):
     # Tax and Contributions
     date_joined = Column(Date, nullable=True)
     ssnit_number = Column(String(50), default="")
-    tax_relief = Column(String(255), default="")
-    employer_contribution = Column(Float, default=0)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())

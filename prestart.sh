@@ -47,6 +47,7 @@ migrations = [
     (\"transport_monthly\", \"ALTER TABLE payroll_records ADD COLUMN transport_monthly FLOAT DEFAULT 0\"),
     (\"employee_pf\", \"ALTER TABLE payroll_records ADD COLUMN employee_pf FLOAT DEFAULT 0\"),
     (\"ssnit_deduction\", \"ALTER TABLE payroll_records ADD COLUMN ssnit_deduction FLOAT DEFAULT 0\"),
+    (\"pf_eight_percent\", \"ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0\"),
 ]
 
 with engine.connect() as conn:

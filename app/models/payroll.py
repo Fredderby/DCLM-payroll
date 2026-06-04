@@ -34,6 +34,8 @@ class PayrollRecord(Base):
     other_deductions = Column(Float, default=0)
     total_deductions = Column(Float, default=0)
     
+    # PF 8% Deduction (uploaded from spreadsheet, used for Pastoral & Non-Pastoral)
+    pf_eight_percent = Column(Float, default=0)
     # Historical PF-8% field (kept for backward compatibility with existing records)
     employee_pf = Column(Float, default=0)
     # SSNIT 5.5% Deduction (uploaded from spreadsheet, used for Pastoral & Non-Pastoral)

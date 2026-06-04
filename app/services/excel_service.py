@@ -103,7 +103,8 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
         'tithe': ['tithe', '10_tithe', 'tithe_10', '10%_tithe'],
         'future_savings': ['future_savings', 'savings', 'pension_contribution'],
         'other_deductions': ['other_deductions', 'miscellaneous_deductions'],
-        'employer_contribution': ['employer_contribution', 'employer_paid', 'company_paid'],
+        # PF 8% deduction (for both Pastoral & Non-Pastoral)
+        'pf_eight_percent': ['pf_eight_percent', 'pf_8', 'pf_8%', 'pf_8_percent', 'pension_fund_8%', 'pension_fund_8', 'pension_fund_8_percent'],
         # Non-Pastoral deductions
         'employee_pf': ['employee_pf', 'pf_8', 'pension_fund', 'employee_pension_fund', 'employee_pf_8'],
         'ssnit_deduction': ['ssnit_deduction', 'ssnit', 'ssnit_55', 'ssnit_5_5', 'ssnit_5.5', 'ssnit_5.5%', 'ssnit%'],
@@ -172,7 +173,8 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
                 'tithe': float(row.get(mapped_columns.get('tithe'), 0)) if mapped_columns.get('tithe') else 0,
                 'future_savings': float(row.get(mapped_columns.get('future_savings'), 0)) if mapped_columns.get('future_savings') else 0,
                 'other_deductions': float(row.get(mapped_columns.get('other_deductions'), 0)) if mapped_columns.get('other_deductions') else 0,
-                'employer_contribution': float(row.get(mapped_columns.get('employer_contribution'), 0)) if mapped_columns.get('employer_contribution') else 0,
+                # PF 8% deduction (for both Pastoral & Non-Pastoral)
+                'pf_eight_percent': float(row.get(mapped_columns.get('pf_eight_percent'), 0)) if mapped_columns.get('pf_eight_percent') else 0,
                 # Non-Pastoral specific deductions
                 'employee_pf': float(row.get(mapped_columns.get('employee_pf'), 0)) if mapped_columns.get('employee_pf') else 0,
                 'ssnit_deduction': float(row.get(mapped_columns.get('ssnit_deduction'), 0)) if mapped_columns.get('ssnit_deduction') else 0,

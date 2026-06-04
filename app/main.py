@@ -289,6 +289,7 @@ async def download_pastoral_template(request: Request):
             "Responsibility Allowance",
             "COLA",
             "Leave Allowance",
+            "PF 8%",
             "SSNIT 5.5%",
             "PAYE",
             "10% Tithe",
@@ -296,7 +297,7 @@ async def download_pastoral_template(request: Request):
         ]
         sample_data = [
             "John Doe", 5000.00, 300.00, 200.00, 150.00, 0.00,
-            0.00, 500.00, 500.00, 200.00
+            400.00, 0.00, 500.00, 500.00, 200.00
         ]
         instructions = [
             "INSTRUCTIONS - PASTORAL PAYROLL:",
@@ -331,6 +332,7 @@ async def download_non_pastoral_template(request: Request):
             "Transport Monthly",
             "COLA",
             "Leave Allowance",
+            "PF 8%",
             "SSNIT 5.5%",
             "PAYE",
             "10% Tithe",
@@ -338,7 +340,7 @@ async def download_non_pastoral_template(request: Request):
         ]
         sample_data = [
             "Jane Doe", 4000.00, 800.00, 400.00, 300.00, 500.00, 200.00,
-            0.00, 220.00, 400.00, 400.00, 200.00
+            0.00, 320.00, 220.00, 400.00, 400.00, 200.00
         ]
         instructions = [
             "INSTRUCTIONS - NON-PASTORAL PAYROLL:",
@@ -519,8 +521,8 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
                     existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
                     existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
-                    existing_payroll.employer_contribution = record.get('employer_contribution', existing_payroll.employer_contribution)
                     existing_payroll.employee_pf = record.get('employee_pf', existing_payroll.employee_pf)
+                    existing_payroll.pf_eight_percent = record.get('pf_eight_percent', existing_payroll.pf_eight_percent)
                     existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
                     from app.services.payroll_service import calculate_payroll_totals
                     earnings = {'basic_salary': existing_payroll.basic_salary, 'meals_monthly': existing_payroll.meals_monthly,
@@ -530,7 +532,8 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         'transport_monthly': existing_payroll.transport_monthly}
                     deductions = {'paye': existing_payroll.paye, 'tithe': existing_payroll.tithe,
                         'future_savings': existing_payroll.future_savings, 'other_deductions': existing_payroll.other_deductions,
-                        'employee_pf': existing_payroll.employee_pf, 'ssnit_deduction': existing_payroll.ssnit_deduction}
+                        'employee_pf': existing_payroll.employee_pf, 'ssnit_deduction': existing_payroll.ssnit_deduction,
+                        'pf_eight_percent': existing_payroll.pf_eight_percent}
                     total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
                     existing_payroll.total_earnings = total_earnings
                     existing_payroll.total_deductions = total_deductions
@@ -1244,9 +1247,9 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "other_deductions": float(payroll.other_deductions or 0),
         "ssnit_deduction": float(payroll.ssnit_deduction or 0),
         "employee_pf": float(payroll.employee_pf or 0),
+        "pf_eight_percent": float(payroll.pf_eight_percent or 0),
         "total_deductions": float(payroll.total_deductions or 0),
         "net_salary": float(payroll.net_salary or 0),
-        "employer_contribution": float(payroll.employer_contribution or 0),
         "staff_category": staff_category,
         "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
         "loans": loans_data,
