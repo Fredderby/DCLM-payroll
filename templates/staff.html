@@ -543,9 +543,7 @@
           ['Bank Branch', d.bank_branch],
           ['Bank Account', d.bank_number],
           ['SSNIT Number', d.ssnit_number],
-          ['Date Joined', d.date_joined],
-          ['Tax Relief', (d.tax_relief !== undefined && d.tax_relief !== null) ? 'GHS ' + Number(d.tax_relief).toFixed(2) : null],
-          ['Employer Contr.', (d.employer_contribution !== undefined && d.employer_contribution !== null) ? 'GHS ' + Number(d.employer_contribution).toFixed(2) : null]
+          ['Date Joined', d.date_joined]
         ];
         html += '<div class="row g-2">';
         for (var i = 0; i < fields.length; i++) {
@@ -585,8 +583,7 @@
         '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Name</label><input type="text" name="bank_name" class="form-control form-control-sm" value="' + v('bank_name') + '" /></div>' +
         '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Branch</label><input type="text" name="bank_branch" class="form-control form-control-sm" value="' + v('bank_branch') + '" /></div>' +
         '<div class="col-sm-6"><label class="form-label" style="font-size:12px">Bank Account</label><input type="text" name="bank_number" class="form-control form-control-sm" value="' + v('bank_number') + '" /></div>' +
-        '<div class="col-sm-4"><label class="form-label" style="font-size:12px">Tax Relief (GHS)</label><input type="number" step="0.01" name="tax_relief" class="form-control form-control-sm" value="' + v('tax_relief','0') + '" /></div>' +
-        '<div class="col-sm-4"><label class="form-label" style="font-size:12px">Employer Contr. (GHS)</label><input type="number" step="0.01" name="employer_contribution" class="form-control form-control-sm" value="' + v('employer_contribution','0') + '" /></div>' +
+
         '</div>';
     }
 

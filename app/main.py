@@ -604,7 +604,13 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         employee.location = record.get('location', employee.location)
                         employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
                         employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
-                        employee.date_joined = record.get('date_joined', getattr(employee, 'date_joined', None))
+                        dj_val = record.get('date_joined', None)
+                        if dj_val and str(dj_val).strip().lower() not in ('nan', 'none', ''):
+                            parsed_dj = parse_date_joined(str(dj_val))
+                            if parsed_dj:
+                                employee.date_joined = parsed_dj
+                        else:
+                            employee.date_joined = getattr(employee, 'date_joined', None)
                         payroll_record = create_payroll_record(db, employee, record)
                         db.commit()
                     
@@ -649,6 +655,16 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     })
                 
                 total_records_in_file = len(records) if records else 0
+                
+                # Detect payroll type from file name
+                fname_lower = original_filename.lower()
+                if 'pastoral' in fname_lower and 'non' not in fname_lower:
+                    payroll_type = "Pastoral"
+                elif 'non' in fname_lower and 'pastoral' in fname_lower:
+                    payroll_type = "Non-Pastoral"
+                else:
+                    payroll_type = "Mixed/Unknown"
+                
                 upload_history = UploadHistory(
                     file_name=original_filename,
                     uploaded_by=current_user.id,
@@ -738,7 +754,7 @@ async def download_employee_template(request: Request, db: Session = Depends(get
     
     fieldnames = [
         "employee_number", "name", "email", "function", "designation",
-        "location", "ssnit_number", "tax_relief", "employer_contribution",
+        "location", "ssnit_number",
         "bank_number", "bank_name", "bank_branch", "date_joined"
     ]
     output = io.StringIO()
@@ -752,8 +768,6 @@ async def download_employee_template(request: Request, db: Session = Depends(get
         "designation": "Accountant",
         "location": "Accra",
         "ssnit_number": "SSNIT123456",
-        "tax_relief": "500",
-        "employer_contribution": "0",
         "bank_number": "1234567890",
         "bank_name": "GCB Bank",
         "bank_branch": "Head Office",
@@ -810,8 +824,6 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
             'designation': ['designation', 'title', 'job_title', 'position'],
             'location': ['location', 'office', 'branch', 'work_location'],
             'ssnit_number': ['ssnit_number', 'ssnit', 'social_security', 'ssn'],
-            'tax_relief': ['tax_relief', 'taxrelief', 'tax_relief_amount'],
-            'employer_contribution': ['employer_contribution', 'employer_contr', 'employercontribution'],
             'bank_number': ['bank_number', 'bank_no', 'account_number', 'bankaccount', 'bank_acc'],
             'bank_name': ['bank_name', 'bank', 'bankname'],
             'bank_branch': ['bank_branch', 'branch', 'bankbranch'],
@@ -873,14 +885,9 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
                 continue
             
             date_obj = None
-            date_str = str(row.get('date_joined', '')).strip()
+            date_str = str(row.get('date_joined', '') or '').strip()
             if date_str and date_str.lower() not in ('nan', 'none', ''):
-                for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d'):
-                    try:
-                        date_obj = datetime.strptime(date_str, fmt).date()
-                        break
-                    except ValueError:
-                        pass
+                date_obj = parse_date_joined(date_str)
             
             def parse_float(val, default=0):
                 try:
@@ -899,8 +906,6 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
                 designation=str(row.get('designation', '')).strip(),
                 location=str(row.get('location', '')).strip(),
                 ssnit_number=str(row.get('ssnit_number', '')).strip(),
-                tax_relief=str(row.get('tax_relief', '')).strip(),
-                employer_contribution=parse_float(row.get('employer_contribution')),
                 bank_number=str(row.get('bank_number', '')).strip(),
                 bank_name=str(row.get('bank_name', '')).strip(),
                 bank_branch=str(row.get('bank_branch', '')).strip(),
@@ -925,13 +930,38 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
         template = templates.get_template("staff.html")
         return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": f"Upload failed: {str(e)}"}), media_type="text/html")
 
+def parse_date_joined(date_str):
+    """Parse date_joined from various formats: YYYY-MM-DD, Month DD, YYYY, etc."""
+    if not date_str or not str(date_str).strip():
+        return None
+    from datetime import datetime as dt
+    date_str = str(date_str).strip()
+    formats = [
+        "%Y-%m-%d",
+        "%B %d, %Y",
+        "%B %d %Y",
+        "%b %d, %Y",
+        "%b %d %Y",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%d-%m-%Y",
+        "%m-%d-%Y",
+    ]
+    for fmt in formats:
+        try:
+            return dt.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 @app.post("/staff/add")
 @app.post("/staff/create")
 async def add_staff(request: Request, employee_number: str = Form(...), name: str = Form(...), 
                    email: str = Form(...), function: str = Form(default=""),
                    designation: str = Form(default=""), location: str = Form(default=""),
-                   ssnit_number: str = Form(default=""), tax_relief: str = Form(default=""),
-                   employer_contribution: float = Form(default=0), bank_number: str = Form(default=""),
+                   ssnit_number: str = Form(default=""),
+                   bank_number: str = Form(default=""),
                    bank_name: str = Form(default=""), bank_branch: str = Form(default=""),
                    date_joined: str = Form(default=None), db: Session = Depends(get_db)):
     try:
@@ -940,7 +970,6 @@ async def add_staff(request: Request, employee_number: str = Form(...), name: st
         return RedirectResponse(url="/login", status_code=303)
     
     from app.models.employee import Employee
-    from datetime import datetime
     
     # Check if employee exists
     existing = db.query(Employee).filter(
@@ -954,9 +983,7 @@ async def add_staff(request: Request, employee_number: str = Form(...), name: st
         return HTMLResponse(content=rendered, media_type="text/html")
     
     try:
-        date_obj = None
-        if date_joined:
-            date_obj = datetime.strptime(date_joined, "%Y-%m-%d").date()
+        date_obj = parse_date_joined(date_joined)
         
         employee = Employee(
             employee_number=employee_number,
@@ -966,8 +993,6 @@ async def add_staff(request: Request, employee_number: str = Form(...), name: st
             designation=designation,
             location=location,
             ssnit_number=ssnit_number,
-            tax_relief=tax_relief,
-            employer_contribution=employer_contribution or 0,
             bank_number=bank_number,
             bank_name=bank_name,
             bank_branch=bank_branch,
@@ -1018,8 +1043,6 @@ async def staff_details(request: Request, staff_id: int, db: Session = Depends(g
         "designation": employee.designation or "",
         "location": employee.location or "",
         "ssnit_number": employee.ssnit_number or "",
-        "tax_relief": employee.tax_relief or "",
-        "employer_contribution": float(employee.employer_contribution or 0),
         "bank_number": employee.bank_number or "",
         "bank_name": employee.bank_name or "",
         "bank_branch": employee.bank_branch or "",
@@ -1030,8 +1053,8 @@ async def staff_details(request: Request, staff_id: int, db: Session = Depends(g
 async def update_staff(request: Request, staff_id: int, employee_number: str = Form(...), name: str = Form(...), 
                        email: str = Form(...), function: str = Form(default=""),
                        designation: str = Form(default=""), location: str = Form(default=""),
-                       ssnit_number: str = Form(default=""), tax_relief: str = Form(default=""),
-                       employer_contribution: float = Form(default=0), bank_number: str = Form(default=""),
+                       ssnit_number: str = Form(default=""),
+                       bank_number: str = Form(default=""),
                        bank_name: str = Form(default=""), bank_branch: str = Form(default=""),
                        date_joined: str = Form(default=None), db: Session = Depends(get_db)):
     try:
@@ -1040,7 +1063,6 @@ async def update_staff(request: Request, staff_id: int, employee_number: str = F
         return RedirectResponse(url="/login", status_code=303)
     
     from app.models.employee import Employee
-    from datetime import datetime
     
     try:
         staff = db.query(Employee).filter(Employee.id == staff_id).first()
@@ -1068,14 +1090,12 @@ async def update_staff(request: Request, staff_id: int, employee_number: str = F
         staff.designation = designation
         staff.location = location
         staff.ssnit_number = ssnit_number
-        staff.tax_relief = tax_relief
-        staff.employer_contribution = employer_contribution or 0
         staff.bank_number = bank_number
         staff.bank_name = bank_name
         staff.bank_branch = bank_branch
         
         if date_joined:
-            staff.date_joined = datetime.strptime(date_joined, "%Y-%m-%d").date()
+            staff.date_joined = parse_date_joined(date_joined)
         
         db.commit()
         
@@ -2228,6 +2248,8 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
         return HTMLResponse(content=rendered, media_type="text/html")
     
     from app.services.cache_service import get_cache, set_cache
+    import logging
+    logger = logging.getLogger(__name__)
     
     cache_key = "upload_hist"
     cached = get_cache(cache_key)
@@ -2235,31 +2257,61 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
         uploads_list = cached
     else:
         try:
-            uploads = db.query(UploadHistory).order_by(UploadHistory.id.desc()).limit(500).all()
+            # Try to query with all new columns (requires DB migration)
+            try:
+                uploads = db.query(UploadHistory).order_by(UploadHistory.id.desc()).limit(500).all()
+            except Exception as col_err:
+                # Fallback: query only known columns using raw SQL
+                logger.warning(f"Upload history query failed with new columns, using fallback: {col_err}")
+                from sqlalchemy import text
+                result = db.execute(text(
+                    "SELECT id, file_name, uploaded_by, month, status, timestamp "
+                    "FROM upload_history ORDER BY id DESC LIMIT 500"
+                ))
+                uploads = result.fetchall()
+            
+            # Convert to serializable format for template
+            uploads_list = []
+            for u in uploads:
+                if hasattr(u, '_mapping'):
+                    # Raw row result
+                    ts = u._mapping.get('timestamp')
+                    uploads_list.append({
+                        "id": u._mapping.get('id'),
+                        "file_name": u._mapping.get('file_name'),
+                        "uploaded_by": u._mapping.get('uploaded_by'),
+                        "month": u._mapping.get('month'),
+                        "status": u._mapping.get('status', ''),
+                        "timestamp": ts,
+                        "total_employees": 0,
+                        "imported_count": 0,
+                        "skipped_count": 0
+                    })
+                else:
+                    # ORM object
+                    ts = u.timestamp
+                    uploads_list.append({
+                        "id": u.id,
+                        "file_name": u.file_name,
+                        "uploaded_by": u.uploaded_by,
+                        "month": u.month,
+                        "status": u.status or '',
+                        "timestamp": ts,
+                        "total_employees": getattr(u, 'total_employees', 0) or 0,
+                        "imported_count": getattr(u, 'imported_count', 0) or 0,
+                        "skipped_count": getattr(u, 'skipped_count', 0) or 0
+                    })
+            
+            set_cache(cache_key, uploads_list, ttl_seconds=120)
         except Exception as e:
+            logger.error(f"Upload history error: {e}")
             template = templates.get_template("upload_history.html")
             rendered = template.render({
                 "user": current_user,
                 "uploads": [],
-                "error": f"Database error: {str(e)[:100]}"
+                "error": "Unable to load upload history. The database schema may need to be updated. Please contact an administrator."
             })
             return HTMLResponse(content=rendered, media_type="text/html")
-        
-        # Convert to serializable format for template
-        uploads_list = []
-        for u in uploads:
-            ts = u.timestamp
-            
-            uploads_list.append({
-                "id": u.id,
-                "file_name": u.file_name,
-                "uploaded_by": u.uploaded_by,
-                "month": u.month,
-                "status": u.status,
-                "timestamp": ts
-            })
-        
-        set_cache(cache_key, uploads_list, ttl_seconds=120)
     
     template = templates.get_template("upload_history.html")
     rendered = template.render({
@@ -2295,8 +2347,6 @@ async def employee_detail(request: Request, employee_id: int, db: Session = Depe
         "location": emp.location,
         "date_joined": emp.date_joined.isoformat() if emp.date_joined else None,
         "ssnit_number": emp.ssnit_number,
-        "tax_relief": emp.tax_relief,
-        "employer_contribution": emp.employer_contribution or 0,
         "bank_name": emp.bank_name,
         "bank_number": emp.bank_number,
         "bank_branch": emp.bank_branch
@@ -2319,7 +2369,22 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
     if not record:
         return JSONResponse(content={"success": False, "error": "Payslip not found"}, status_code=404)
 
+    # Robust employee matching
     emp = db.query(Employee).filter(Employee.name == record.employee_name).first()
+    if not emp:
+        # Try case-insensitive match
+        all_emps = db.query(Employee).all()
+        for e in all_emps:
+            if (e.name or '').upper() == (record.employee_name or '').upper():
+                emp = e
+                break
+    if not emp:
+        # Try whitespace-normalized match
+        rec_name_norm = ' '.join((record.employee_name or '').split()).upper()
+        for e in all_emps:
+            if ' '.join((e.name or '').split()).upper() == rec_name_norm:
+                emp = e
+                break
     if not emp:
         return JSONResponse(content={"success": False, "error": "Employee not found"}, status_code=404)
 
@@ -2375,12 +2440,40 @@ async def resend_payslip(request: Request, log_id: int, db: Session = Depends(ge
     if not emp:
         return JSONResponse(content={"success": False, "error": "Employee not found"})
 
-    record = db.query(PayrollRecord).filter(
+    # Robust employee matching by name (try exact, then case-insensitive, then normalized)
+    record_emp = None
+    from sqlalchemy import func as sa_func
+    records = db.query(PayrollRecord).filter(
         PayrollRecord.month == log_entry.month,
         PayrollRecord.employee_name == log_entry.employee_name
-    ).first()
-    if not record:
+    ).all()
+    for rec in records:
+        record_emp = rec
+        break
+    if not record_emp:
+        # Try case-insensitive match
+        all_recs = db.query(PayrollRecord).filter(
+            PayrollRecord.month == log_entry.month
+        ).all()
+        log_name_upper = (log_entry.employee_name or '').upper()
+        for rec in all_recs:
+            if (rec.employee_name or '').upper() == log_name_upper:
+                record_emp = rec
+                break
+    if not record_emp:
+        # Try whitespace-normalized match
+        log_name_norm = ' '.join((log_entry.employee_name or '').split()).upper()
+        all_recs = db.query(PayrollRecord).filter(
+            PayrollRecord.month == log_entry.month
+        ).all()
+        for rec in all_recs:
+            if ' '.join((rec.employee_name or '').split()).upper() == log_name_norm:
+                record_emp = rec
+                break
+    if not record_emp:
         return JSONResponse(content={"success": False, "error": "Payroll record not found"})
+
+    record = record_emp
 
     # Generate PDF if not exists
     pdf_path = record.pdf_generated

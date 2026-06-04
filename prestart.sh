@@ -65,6 +65,33 @@ with engine.connect() as conn:
                 print(f'  - Could not add {col_name}: {e}')
         else:
             print(f'  ✓ Column exists: {col_name}')
+
+# Migrate upload_history table for new tracking columns
+print("Running upload_history migrations...")
+upload_migrations = [
+    ("total_employees", "ALTER TABLE upload_history ADD COLUMN total_employees INTEGER DEFAULT 0"),
+    ("imported_count", "ALTER TABLE upload_history ADD COLUMN imported_count INTEGER DEFAULT 0"),
+    ("skipped_count", "ALTER TABLE upload_history ADD COLUMN skipped_count INTEGER DEFAULT 0"),
+    ("skip_reasons", "ALTER TABLE upload_history ADD COLUMN skip_reasons TEXT"),
+]
+
+try:
+    result = conn.execute(sa.text('SHOW COLUMNS FROM upload_history'))
+    upload_existing = [row[0] for row in result]
+    
+    for col_name, alter_sql in upload_migrations:
+        if col_name not in upload_existing:
+            try:
+                conn.execute(sa.text(alter_sql))
+                conn.commit()
+                print(f'  + Added column: {col_name} to upload_history')
+            except Exception as e:
+                conn.rollback()
+                print(f'  - Could not add {col_name}: {e}')
+        else:
+            print(f'  ✓ Column exists: {col_name} in upload_history')
+except Exception as e:
+    print(f'  - Could not inspect upload_history: {e}')
 " 2>&1 || echo "WARNING: Migration partially failed. Some columns may not have been added."
 
 echo "=== Pre-start complete. Starting application... ==="

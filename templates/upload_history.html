@@ -25,16 +25,21 @@
   <table class="table" id="historyTable">
     <thead>
       <tr>
-        <th>File Name</th>
         <th>Upload Date</th>
+        <th>Payroll Month</th>
+        <th>File Name</th>
+        <th>Payroll Type</th>
+        <th>Total Employees</th>
+        <th>Imported</th>
+        <th>Skipped</th>
+        <th>Uploaded By</th>
         <th>Status</th>
       </tr>
     </thead>
     <tbody>
       {% for u in uploads %}
       <tr>
-        <td><strong>{{ u.file_name or 'N/A' }}</strong></td>
-        <td style="font-size: 13px;">
+        <td style="font-size: 12px; white-space: nowrap;">
           {% if u.timestamp %}
             {% if u.timestamp is string %}
               {{ u.timestamp }}
@@ -47,6 +52,22 @@
             N/A
           {% endif %}
         </td>
+        <td>{{ u.month or 'N/A' }}</td>
+        <td><strong>{{ u.file_name or 'N/A' }}</strong></td>
+        <td>
+          {% set fname = (u.file_name or '').lower() %}
+          {% if 'pastoral' in fname %}
+          <span class="badge badge-primary">Pastoral</span>
+          {% elif 'non' in fname and 'pastoral' in fname %}
+          <span class="badge badge-success">Non-Pastoral</span>
+          {% else %}
+          <span class="badge badge-secondary">Mixed/Unknown</span>
+          {% endif %}
+        </td>
+        <td style="text-align: center;">{{ u.total_employees if u.total_employees is defined and u.total_employees else 0 }}</td>
+        <td style="text-align: center;">{{ u.imported_count if u.imported_count is defined and u.imported_count else 0 }}</td>
+        <td style="text-align: center;">{{ u.skipped_count if u.skipped_count is defined and u.skipped_count else 0 }}</td>
+        <td style="font-size: 12px;">{{ u.uploaded_by_name if u.uploaded_by_name is defined else 'N/A' }}</td>
         <td>
           {% set status = (u.status or '').lower() %}
           {% if status in ('completed', 'success') %}
