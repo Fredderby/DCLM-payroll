@@ -9,27 +9,27 @@ import os
 def calculate_payroll_totals(earnings_dict, deductions_dict):
     """Calculate totals for earnings and deductions"""
     total_earnings = sum([
-        earnings_dict.get('basic_salary', 0),
-        earnings_dict.get('meals_monthly', 0),
-        earnings_dict.get('responsibility_allowance', 0),
-        earnings_dict.get('cola', 0),
-        earnings_dict.get('leave_allowance', 0),
-        earnings_dict.get('other_earnings', 0),
-        earnings_dict.get('rent_monthly', 0),
-        earnings_dict.get('utility_monthly', 0),
-        earnings_dict.get('transport_monthly', 0),
+        float(earnings_dict.get('basic_salary', 0) or 0),
+        float(earnings_dict.get('meals_monthly', 0) or 0),
+        float(earnings_dict.get('responsibility_allowance', 0) or 0),
+        float(earnings_dict.get('cola', 0) or 0),
+        float(earnings_dict.get('leave_allowance', 0) or 0),
+        float(earnings_dict.get('other_earnings', 0) or 0),
+        float(earnings_dict.get('rent_monthly', 0) or 0),
+        float(earnings_dict.get('utility_monthly', 0) or 0),
+        float(earnings_dict.get('transport_monthly', 0) or 0),
     ])
 
     total_deductions = sum([
-        deductions_dict.get('paye', 0),
-        deductions_dict.get('tithe', 0),
-        deductions_dict.get('future_savings', 0),
-        deductions_dict.get('other_deductions', 0),
-        deductions_dict.get('employee_pf', 0),      # Historical - kept for existing records
-        deductions_dict.get('ssnit_deduction', 0),   # SSNIT 5.5% - replaces PF-8% for new uploads
+        float(deductions_dict.get('paye', 0) or 0),
+        float(deductions_dict.get('tithe', 0) or 0),
+        float(deductions_dict.get('future_savings', 0) or 0),
+        float(deductions_dict.get('other_deductions', 0) or 0),
+        float(deductions_dict.get('employee_pf', 0) or 0),      # Historical - kept for existing records
+        float(deductions_dict.get('ssnit_deduction', 0) or 0),   # SSNIT 5.5% - replaces PF-8% for new uploads
     ])
 
-    net_salary = total_earnings - total_deductions
+    net_salary = round(total_earnings - total_deductions, 2)
 
     return total_earnings, total_deductions, net_salary
 

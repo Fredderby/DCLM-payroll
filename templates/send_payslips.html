@@ -158,11 +158,13 @@
       rows.forEach(function(row) {
         var text = row.textContent.toLowerCase();
         var rowMonth = row.getAttribute('data-month') || '';
+        var hasEmail = row.getAttribute('data-has-email') || 'false';
         var emailStatus = row.getAttribute('data-email-status') || '';
 
         var match = text.includes(q);
         if (month && rowMonth !== month) match = false;
-        if (email === 'no_email' && emailStatus !== 'no_email') match = false;
+        if (email === 'has_email' && hasEmail !== 'true') match = false;
+        if (email === 'no_email' && hasEmail === 'true') match = false;
         if (email === 'sent' && emailStatus !== 'sent') match = false;
 
         row.style.display = match ? '' : 'none';

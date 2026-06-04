@@ -371,8 +371,13 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
     import tempfile
     import os
     import time
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"UPLOAD START: filename={file.filename}, month={month}, user={current_user.email}")
 
     if not file.filename.endswith(('.xlsx', '.csv')):
+        logger.warning(f"UPLOAD REJECTED: invalid file type {file.filename}")
         template = templates.get_template("upload.html")
         rendered = template.render({"user": current_user, "error": "Only .xlsx and .csv files allowed"})
         return HTMLResponse(content=rendered, media_type="text/html")
@@ -438,7 +443,10 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             # Track IDs of employees that appear in the file
             matched_emp_ids = set()
             
+            logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}'")
+            
             for record in records:
+                skip_reason = None
                 try:
                     emp_no = str(record.get('employee_number', '') or '').strip()
                     emp_email = str(record.get('email', '') or '').strip()
@@ -446,16 +454,28 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     # Normalize: collapse multiple spaces, remove leading/trailing spaces
                     emp_name_norm = ' '.join(emp_name.split()).upper()
                     
+                    if not emp_name_norm:
+                        skip_reason = "Missing employee name"
+                        unmatched_records.append({
+                            'name': emp_no or emp_email or 'Unknown',
+                            'number': emp_no,
+                            'email': emp_email,
+                            'reason': skip_reason
+                        })
+                        print(f"SKIP: {skip_reason} - emp_no={repr(emp_no)}")
+                        continue
+                    
                     employee = None
+                    # Build lookup dict for faster matching
+                    all_emps = db.query(Employee).all()
+                    name_lookup = {}
+                    for e in all_emps:
+                        norm = ' '.join((e.name or '').split()).upper()
+                        name_lookup[norm] = e
+                    
                     # PRIMARY: Match by employee name (case-insensitive, normalized)
-                    if emp_name_norm:
-                        # First try exact match (normalized - both upper)
-                        all_emps = db.query(Employee).all()
-                        for e in all_emps:
-                            db_name_norm = ' '.join((e.name or '').split()).upper()
-                            if db_name_norm == emp_name_norm:
-                                employee = e
-                                break
+                    if emp_name_norm in name_lookup:
+                        employee = name_lookup[emp_name_norm]
                     if not employee and emp_name_norm:
                         # Try partial match
                         employee = db.query(Employee).filter(
@@ -466,10 +486,8 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         name_parts = emp_name_norm.split()
                         for part in name_parts:
                             if len(part) > 2:
-                                all_emps = db.query(Employee).all()
-                                for e in all_emps:
-                                    db_name_norm = ' '.join((e.name or '').split()).upper()
-                                    if part in db_name_norm:
+                                for norm, e in name_lookup.items():
+                                    if part in norm:
                                         employee = e
                                         break
                                 if employee:
@@ -483,12 +501,14 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     
                     if not employee:
                         # No match found - skip and list for correction
+                        skip_reason = f"No employee found matching name '{emp_name}'"
                         unmatched_records.append({
                             'name': emp_name or emp_no or emp_email or 'Unknown',
                             'number': emp_no,
-                            'email': emp_email
+                            'email': emp_email,
+                            'reason': skip_reason
                         })
-                        print(f"MATCH FAILED: emp_name={repr(emp_name)} normalized={repr(emp_name_norm)} emp_no={repr(emp_no)}")
+                        print(f"SKIP: {skip_reason} - emp_no={repr(emp_no)} emp_email={repr(emp_email)}")
                         continue
                     
                     print(f"MATCH OK: emp_name={repr(emp_name)} -> {employee.name} (ID={employee.id})")
@@ -609,13 +629,35 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             from app.services.cache_service import clear_cache
             clear_cache()
             
-            # Record upload history
+            # Record upload history with detailed tracking
             try:
+                import json
+                skip_details = []
+                for ur in unmatched_records:
+                    skip_details.append({
+                        'name': ur.get('name', 'Unknown'),
+                        'employee_number': ur.get('number', ''),
+                        'email': ur.get('email', ''),
+                        'reason': ur.get('reason', 'No matching employee found')
+                    })
+                for mer in missing_employees:
+                    skip_details.append({
+                        'name': mer.name,
+                        'employee_number': mer.employee_number,
+                        'email': mer.email,
+                        'reason': 'Registered employee not found in upload file (may be terminated)'
+                    })
+                
+                total_records_in_file = len(records) if records else 0
                 upload_history = UploadHistory(
                     file_name=original_filename,
                     uploaded_by=current_user.id,
                     month=month,
-                    status="success" if processed > len(errors) else "partial_failure" if processed > 0 else "failed"
+                    total_employees=total_records_in_file,
+                    imported_count=processed,
+                    skipped_count=len(unmatched_records) + len(missing_employees),
+                    skip_reasons=json.dumps(skip_details),
+                    status="success" if processed > 0 and len(errors) == 0 else "partial_failure" if processed > 0 else "failed"
                 )
                 db.add(upload_history)
                 db.commit()
@@ -1099,27 +1141,37 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             set_cache(month_cache_key, months, ttl_seconds=300)
         
         selected_month = request.query_params.get("month", "")
-        page = int(request.query_params.get("page", "1"))
-        per_page = 50
         
-        # Query with filter and pagination
+        # Query all payslips (no pagination limit to ensure all are visible)
         query = db.query(PayrollRecord)
         if selected_month:
             query = query.filter(PayrollRecord.month == selected_month)
         
         total_payslips = query.count()
-        payslips = query.order_by(PayrollRecord.employee_name).offset((page - 1) * per_page).limit(per_page).all()
+        payslips = query.order_by(PayrollRecord.employee_name).all()
         
-        # Batch-load employee info (N+1 fix)
-        employee_names = list(set(p.employee_name for p in payslips))
-        employees = {}
-        if employee_names:
-            for emp in db.query(Employee).filter(Employee.name.in_(employee_names)).all():
-                employees[emp.name] = emp
+        # Batch-load employee info (N+1 fix) with robust matching
+        all_employees = {e.name: e for e in db.query(Employee).all()}
         for p in payslips:
-            p.employee = employees.get(p.employee_name)
+            emp_name = (p.employee_name or '').strip()
+            emp = all_employees.get(emp_name)
+            if not emp:
+                # Try case-insensitive match
+                emp_name_upper = emp_name.upper()
+                for e_name, e_obj in all_employees.items():
+                    if (e_name or '').upper() == emp_name_upper:
+                        emp = e_obj
+                        break
+            if not emp:
+                # Try normalized whitespace match
+                emp_name_norm = ' '.join(emp_name.split())
+                for e_name, e_obj in all_employees.items():
+                    if ' '.join((e_name or '').split()) == emp_name_norm:
+                        emp = e_obj
+                        break
+            p.employee = emp
         
-        # Generate stats from filtered records
+        # Generate stats from all records
         if selected_month:
             net_total = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).filter(PayrollRecord.month == selected_month).scalar() or 0
         else:
@@ -1127,8 +1179,6 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         total_net_salary = float(net_total)
         total_earnings = sum(p.total_earnings or 0 for p in payslips)
         total_deductions = sum(p.total_deductions or 0 for p in payslips)
-        
-        total_pages = max(1, (total_payslips + per_page - 1) // per_page)
         
         template = templates.get_template("payslips.html")
         rendered = template.render({
@@ -1140,8 +1190,6 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             "total_net_salary": round(total_net_salary, 2),
             "total_earnings": round(total_earnings, 2),
             "total_deductions": round(total_deductions, 2),
-            "page": page,
-            "total_pages": total_pages,
             "success": request.query_params.get("success"),
             "error": request.query_params.get("error")
         })
@@ -1299,6 +1347,9 @@ async def download_payslip(payroll_id: int, request: Request, db: Session = Depe
     from app.models.payroll import PayrollRecord
     from app.services.pdf_service import generate_payslip_pdf, get_pdf_temp_dir
     from fastapi.responses import FileResponse
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     # Authenticate user
     try:
@@ -1309,6 +1360,8 @@ async def download_payslip(payroll_id: int, request: Request, db: Session = Depe
     payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
     if not payroll:
         raise HTTPException(status_code=404, detail="Payslip not found")
+    
+    logger.info(f"PAYSLIP DOWNLOAD: id={payroll_id}, employee={payroll.employee_name}, month={payroll.month}")
     
     # Generate PDF on demand if not already generated (or regenerated from temp)
     if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(payroll.pdf_generated):
@@ -1412,17 +1465,34 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
         if month:
             payslips = db.query(PayrollRecord).filter(PayrollRecord.month == month).all()
             
-            # Attach employee info to each payslip
+            # Attach employee info to each payslip using robust name matching
+            all_employees = {e.name: e for e in db.query(Employee).all()}
             for p in payslips:
-                emp = db.query(Employee).filter(Employee.name == p.employee_name).first()
+                emp_name = (p.employee_name or '').strip()
+                # Try exact match first
+                emp = all_employees.get(emp_name)
+                if not emp:
+                    # Try case-insensitive match
+                    emp_name_upper = emp_name.upper()
+                    for e_name, e_obj in all_employees.items():
+                        if e_name.upper() == emp_name_upper:
+                            emp = e_obj
+                            break
+                if not emp:
+                    # Try normalized whitespace match
+                    emp_name_norm = ' '.join(emp_name.split())
+                    for e_name, e_obj in all_employees.items():
+                        if ' '.join((e_name or '').split()) == emp_name_norm:
+                            emp = e_obj
+                            break
                 p.employee = emp
             
             # Apply filter (support both filter_by and email_filter query params)
             effective_filter = email_filter if email_filter else filter_by
             if effective_filter == "has_email" or effective_filter == "with_email":
-                payslips = [p for p in payslips if p.employee and p.employee.email]
+                payslips = [p for p in payslips if p.employee and p.employee.email and str(p.employee.email).strip()]
             elif effective_filter == "no_email":
-                payslips = [p for p in payslips if not p.employee or not p.employee.email]
+                payslips = [p for p in payslips if not p.employee or not p.employee.email or not str(p.employee.email).strip()]
         
         # Get recent email logs
         email_logs = []
