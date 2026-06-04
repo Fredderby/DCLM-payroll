@@ -281,16 +281,14 @@ async def download_pastoral_template(request: Request):
             "Responsibility Allowance",
             "COLA",
             "Leave Allowance",
-            "Other Earnings",
+            "SSNIT 5.5%",
             "PAYE",
             "10% Tithe",
-            "Future Savings",
-            "Other Deductions",
-            "Employer Contribution"
+            "Future Savings"
         ]
         sample_data = [
-            "John Doe", 5000.00, 300.00, 200.00, 150.00, 0.00, 0.00,
-            500.00, 500.00, 200.00, 0.00, 0.00
+            "John Doe", 5000.00, 300.00, 200.00, 150.00, 0.00,
+            0.00, 500.00, 500.00, 200.00
         ]
         instructions = [
             "INSTRUCTIONS - PASTORAL PAYROLL:",
@@ -324,13 +322,15 @@ async def download_non_pastoral_template(request: Request):
             "Meals Monthly",
             "Transport Monthly",
             "COLA",
+            "Leave Allowance",
             "SSNIT 5.5%",
             "PAYE",
-            "10% Tithe"
+            "10% Tithe",
+            "Future Savings"
         ]
         sample_data = [
             "Jane Doe", 4000.00, 800.00, 400.00, 300.00, 500.00, 200.00,
-            220.00, 400.00, 400.00
+            0.00, 220.00, 400.00, 400.00, 200.00
         ]
         instructions = [
             "INSTRUCTIONS - NON-PASTORAL PAYROLL:",
@@ -1246,6 +1246,9 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             net_words = number_to_words(payroll.net_salary)
         except Exception:
             net_words = ""
+
+    # Determine staff category for component segregation
+    staff_category = payroll.staff_category or "pastoral"
     
     return {
         "id": payroll.id,
@@ -1268,14 +1271,19 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "leave_allowance": float(payroll.leave_allowance or 0),
         "other_earnings": float(payroll.other_earnings or 0),
         "total_earnings": float(payroll.total_earnings or 0),
+        "rent_monthly": float(payroll.rent_monthly or 0),
+        "utility_monthly": float(payroll.utility_monthly or 0),
+        "transport_monthly": float(payroll.transport_monthly or 0),
         "paye": float(payroll.paye or 0),
         "tithe": float(payroll.tithe or 0),
         "future_savings": float(payroll.future_savings or 0),
         "other_deductions": float(payroll.other_deductions or 0),
         "ssnit_deduction": float(payroll.ssnit_deduction or 0),
+        "employee_pf": float(payroll.employee_pf or 0),
         "total_deductions": float(payroll.total_deductions or 0),
         "net_salary": float(payroll.net_salary or 0),
         "employer_contribution": float(payroll.employer_contribution or 0),
+        "staff_category": staff_category,
         "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
         "loans": loans_data,
         "net_salary_words": net_words
@@ -2021,14 +2029,14 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
         ws.title = report_type.replace("_", " ").title()
         
         if report_type == "payroll_summary":
-            headers = ["Employee", "Month", "Basic Salary", "Meals", "Responsibility Allowance", "COLA",
-                       "Leave Allowance", "Total Earnings", "PAYE", "Tithe", "Future Savings",
-                       "Other Deductions", "Total Deductions", "Net Salary"]
+            headers = ["Employee", "Month", "Category", "Basic Salary", "Meals", "Responsibility Allowance", "COLA",
+                       "Leave Allowance", "Total Earnings", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings",
+                       "Employee PF", "Other Deductions", "Total Deductions", "Net Salary"]
             ws.append(headers)
             for r in records:
-                ws.append([r.employee_name, r.month, r.basic_salary, r.meals_monthly, r.responsibility_allowance,
-                          r.cola, r.leave_allowance, r.total_earnings, r.paye, r.tithe, r.future_savings,
-                          r.other_deductions, r.total_deductions, r.net_salary])
+                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.basic_salary, r.meals_monthly, r.responsibility_allowance,
+                          r.cola, r.leave_allowance, r.total_earnings, r.ssnit_deduction, r.paye, r.tithe, r.future_savings,
+                          r.employee_pf, r.other_deductions, r.total_deductions, r.net_salary])
         elif report_type == "employee_list":
             employees = db.query(Employee).order_by(Employee.name).all()
             headers = ["Name", "Email", "Employee Number", "Designation", "Location", "Bank", "Bank Number"]
@@ -2036,10 +2044,10 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
             for e in employees:
                 ws.append([e.name, e.email, e.employee_number, e.designation or e.function, e.location, e.bank_name, e.bank_number])
         elif report_type == "deductions":
-            headers = ["Employee", "Month", "PAYE", "Tithe", "Future Savings", "Other Deductions", "Total Deductions"]
+            headers = ["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"]
             ws.append(headers)
             for r in records:
-                ws.append([r.employee_name, r.month, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
+                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.employee_pf, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             headers = ["Employee", "Bank", "Bank Number", "Net Salary", "Month"]
             ws.append(headers)
@@ -2065,18 +2073,18 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
         writer = csv.writer(output)
         
         if report_type == "payroll_summary":
-            writer.writerow(["Employee", "Month", "Basic Salary", "Total Earnings", "Total Deductions", "Net Salary"])
+            writer.writerow(["Employee", "Month", "Category", "Basic Salary", "Total Earnings", "SSNIT 5.5%", "Total Deductions", "Net Salary"])
             for r in records:
-                writer.writerow([r.employee_name, r.month, r.basic_salary, r.total_earnings, r.total_deductions, r.net_salary])
+                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.basic_salary, r.total_earnings, r.ssnit_deduction, r.total_deductions, r.net_salary])
         elif report_type == "employee_list":
             employees = db.query(Employee).order_by(Employee.name).all()
             writer.writerow(["Name", "Email", "Employee Number", "Designation"])
             for e in employees:
                 writer.writerow([e.name, e.email, e.employee_number, e.designation])
         elif report_type == "deductions":
-            writer.writerow(["Employee", "Month", "PAYE", "Tithe", "Future Savings", "Total Deductions"])
+            writer.writerow(["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"])
             for r in records:
-                writer.writerow([r.employee_name, r.month, r.paye, r.tithe, r.future_savings, r.total_deductions])
+                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.employee_pf, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             writer.writerow(["Employee", "Bank", "Bank Number", "Net Salary", "Month"])
             for r in records:

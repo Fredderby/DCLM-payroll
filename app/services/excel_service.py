@@ -77,7 +77,7 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
     }
 
     # Detect staff category from column headers
-    pastoral_indicators = ['responsibility_allowance', 'leave_allowance', 'other_earnings', 'employer_contribution']
+    pastoral_indicators = ['responsibility_allowance']
     non_pastoral_indicators = ['monthly_basic_salary', 'rent_monthly', 'utility_monthly', 'transport_monthly', 'employee_pf', 'ssnit_deduction']
 
     mapped_columns = {}

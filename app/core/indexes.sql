@@ -53,4 +53,4 @@ ALTER TABLE payroll_records
   ADD COLUMN IF NOT EXISTS employee_pf FLOAT DEFAULT 0;
 
 ALTER TABLE payroll_records
-  ADD COLUMN IF NOT EXISTS ssnit_deduction FLOAT DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS ssnit_deduction FLOAT DEFAULT 0 COMMENT 'SSNIT 5.5% deduction for Pastoral & Non-Pastoral staff';

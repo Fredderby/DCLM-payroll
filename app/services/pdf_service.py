@@ -310,25 +310,50 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         if val is None: return Paragraph("—", td)
         return Paragraph(f"{float(val):,.2f}", tbr)
 
+    # Build payroll rows based on staff category
+    staff_category = getattr(payroll, 'staff_category', 'pastoral') or 'pastoral'
     rows = [
-        [Paragraph("DESCRIPTION", th), Paragraph("EARNINGS (GHS)", thr), Paragraph("DEDUCTIONS (GHS)", thr)],
-        [Paragraph("Basic Salary", tl), v(payroll.basic_salary), v(None)],
-        [Paragraph("Meals Monthly", tl), v(payroll.meals_monthly), v(None)],
-        [Paragraph("Responsibility Allowance", tl), v(payroll.responsibility_allowance), v(None)],
-        [Paragraph("COLA", tl), v(payroll.cola), v(None)],
-        [Paragraph("Leave Allowance", tl), v(payroll.leave_allowance), v(None)],
-        [Paragraph("Other Earnings", tl), v(payroll.other_earnings), v(None)],
-        # Non-Pastoral earnings (shown only if > 0)
-        [Paragraph("Rent Monthly", tl), v(payroll.rent_monthly if float(payroll.rent_monthly or 0) > 0 else None), v(None)],
-        [Paragraph("Utility Monthly", tl), v(payroll.utility_monthly if float(payroll.utility_monthly or 0) > 0 else None), v(None)],
-        [Paragraph("Transport Monthly", tl), v(payroll.transport_monthly if float(payroll.transport_monthly or 0) > 0 else None), v(None)],
-        [Paragraph("PAYE Tax", tl), v(None), v(payroll.paye)],
-        [Paragraph("10% Tithe", tl), v(None), v(payroll.tithe)],
-        [Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)],
-        [Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction if float(payroll.ssnit_deduction or 0) > 0 else None)],
-        [Paragraph("Other Deductions", tl), v(None), v(payroll.other_deductions)],
-        [Paragraph("TOTAL", tbl), vb(payroll.total_earnings), vb(payroll.total_deductions)],
+        [Paragraph("Description", yh), Paragraph("Amount (GHS)", yh), Paragraph("Deductions (GHS)", yh)],
     ]
+
+    if staff_category.lower() == 'pastoral':
+        # Pastoral earnings only
+        rows.append([Paragraph("Basic Salary", tl), v(payroll.basic_salary), v(None)])
+        rows.append([Paragraph("Meals Monthly", tl), v(payroll.meals_monthly), v(None)])
+        rows.append([Paragraph("Responsibility Allowance", tl), v(payroll.responsibility_allowance), v(None)])
+        rows.append([Paragraph("COLA", tl), v(payroll.cola), v(None)])
+        rows.append([Paragraph("Leave Allowance", tl), v(payroll.leave_allowance), v(None)])
+        # Pastoral deductions only
+        if float(payroll.ssnit_deduction or 0) > 0:
+            rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
+        rows.append([Paragraph("PAYE Tax", tl), v(None), v(payroll.paye)])
+        rows.append([Paragraph("10% Tithe", tl), v(None), v(payroll.tithe)])
+        rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
+    else:
+        # Non-Pastoral earnings
+        rows.append([Paragraph("Basic Salary", tl), v(payroll.basic_salary), v(None)])
+        if float(payroll.rent_monthly or 0) > 0:
+            rows.append([Paragraph("Rent Monthly", tl), v(payroll.rent_monthly), v(None)])
+        if float(payroll.utility_monthly or 0) > 0:
+            rows.append([Paragraph("Utility Monthly", tl), v(payroll.utility_monthly), v(None)])
+        if float(payroll.transport_monthly or 0) > 0:
+            rows.append([Paragraph("Transport Monthly", tl), v(payroll.transport_monthly), v(None)])
+        if float(payroll.other_earnings or 0) > 0:
+            rows.append([Paragraph("Other Earnings", tl), v(payroll.other_earnings), v(None)])
+        if float(payroll.leave_allowance or 0) > 0:
+            rows.append([Paragraph("Leave Allowance", tl), v(payroll.leave_allowance), v(None)])
+        # Non-Pastoral deductions
+        if float(payroll.ssnit_deduction or 0) > 0:
+            rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
+        if float(payroll.employee_pf or 0) > 0:
+            rows.append([Paragraph("Employee PF (8%)", tl), v(None), v(payroll.employee_pf)])
+        if float(payroll.future_savings or 0) > 0:
+            rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
+        if float(payroll.other_deductions or 0) > 0:
+            rows.append([Paragraph("Other Deductions", tl), v(None), v(payroll.other_deductions)])
+
+    rows.append([Paragraph("TOTAL", tbl), vb(payroll.total_earnings), vb(payroll.total_deductions)])
+
     cw = [PW*0.40, PW*0.30, PW*0.30]
     mt = Table(rows, colWidths=cw)
     mt.setStyle(TableStyle([
@@ -338,7 +363,6 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         ('BACKGROUND', (0,-1), (-1,-1), TOTAL_BG),
         ('LINEABOVE', (0,-1), (-1,-1), 1.5, DEEP_BLUE),
         ('LINEBELOW', (0,-1), (-1,-1), 1.5, DEEP_BLUE),
-        ('BACKGROUND', (0,7), (-1,10), GRAY_ALT),
         ('TOPPADDING', (0,0), (-1,-1), 4), ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         ('LEFTPADDING', (0,0), (-1,-1), 6), ('RIGHTPADDING', (0,0), (-1,-1), 6),
         ('ALIGN', (1,0), (1,-1), 'RIGHT'), ('ALIGN', (2,0), (2,-1), 'RIGHT'),

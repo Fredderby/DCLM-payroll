@@ -532,21 +532,42 @@
     h += '<div class="info-item"><span class="ilabel">Account No.:</span><span class="ivalue">'+(d.bank_number||'N/A')+'</span></div></div>';
     h += '<div class="payslip-table-wrap"><table class="payslip-maintable"><thead><tr><th>DESCRIPTION</th><th>EARNINGS (GHS)</th><th>DEDUCTIONS (GHS)</th></tr></thead><tbody>';
     function row(l,e,de){return '<tr><td>'+l+'</td><td>'+(e!==undefined?fmt(e):'—')+'</td><td>'+(de!==undefined?fmt(de):'—')+'</td></tr>';}
-    h+=row('Basic Salary',d.basic_salary);
-    h+=row('Meals Monthly',d.meals_monthly);
-    h+=row('Responsibility Allowance',d.responsibility_allowance);
-    h+=row('COLA',d.cola);
-    h+=row('Leave Allowance',d.leave_allowance);
-    h+=row('Other Earnings',d.other_earnings);
-    h+=row('PAYE Tax',undefined,d.paye);
-    h+=row('10% Tithe',undefined,d.tithe);
-    h+=row('Future Savings',undefined,d.future_savings);
-    if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
-      h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
+    if(d.staff_category && d.staff_category.toLowerCase() === 'pastoral') {
+      h+=row('Basic Salary',d.basic_salary);
+      h+=row('Meals Monthly',d.meals_monthly);
+      h+=row('Responsibility Allowance',d.responsibility_allowance);
+      h+=row('COLA',d.cola);
+      h+=row('Leave Allowance',d.leave_allowance);
+      if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
+        h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
+      }
+      h+=row('PAYE Tax',undefined,d.paye);
+      h+=row('10% Tithe',undefined,d.tithe);
+      h+=row('Future Savings',undefined,d.future_savings);
     } else {
-      h+=row('SSNIT 5.5%',undefined,0);
+      h+=row('Basic Salary',d.basic_salary);
+      h+=row('Meals Monthly',d.meals_monthly);
+      if(d.rent_monthly && parseFloat(d.rent_monthly) > 0){
+        h+=row('Rent Monthly',d.rent_monthly);
+      }
+      if(d.utility_monthly && parseFloat(d.utility_monthly) > 0){
+        h+=row('Utility Monthly',d.utility_monthly);
+      }
+      if(d.transport_monthly && parseFloat(d.transport_monthly) > 0){
+        h+=row('Transport Monthly',d.transport_monthly);
+      }
+      h+=row('COLA',d.cola);
+      h+=row('Leave Allowance',d.leave_allowance);
+      h+=row('Other Earnings',d.other_earnings);
+      if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
+        h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
+      }
+      if(d.employee_pf && parseFloat(d.employee_pf) > 0){
+        h+=row('Employee PF (8%)',undefined,d.employee_pf);
+      }
+      h+=row('Future Savings',undefined,d.future_savings);
+      h+=row('Other Deductions',undefined,d.other_deductions);
     }
-    h+=row('Other Deductions',undefined,d.other_deductions);
     h+='<tr class="total-row"><td>TOTAL</td><td>'+fmt(d.total_earnings)+'</td><td>'+fmt(d.total_deductions)+'</td></tr>';
     h+='</tbody></table></div>';
     h+='<div class="payslip-netsalary"><div><div class="ns-label">NET SALARY</div><div class="ns-words">'+(d.net_salary_words||'')+'</div></div><div><div class="ns-value">'+fmt(d.net_salary)+'</div></div></div>';

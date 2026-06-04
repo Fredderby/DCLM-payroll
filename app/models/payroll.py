@@ -36,7 +36,7 @@ class PayrollRecord(Base):
     
     # Historical PF-8% field (kept for backward compatibility with existing records)
     employee_pf = Column(Float, default=0)
-    # SSNIT 5.5% Deduction (uploaded from spreadsheet, used for Non-Pastoral)
+    # SSNIT 5.5% Deduction (uploaded from spreadsheet, used for Pastoral & Non-Pastoral)
     ssnit_deduction = Column(Float, default=0)
     
     # Net
