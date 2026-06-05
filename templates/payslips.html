@@ -547,7 +547,7 @@
       h+=row('10% Tithe',undefined,d.tithe);
       h+=row('Future Savings',undefined,d.future_savings);
     } else {
-      h+=row('Basic Salary',d.basic_salary);
+      h+=row('Monthly Basic Salary',d.basic_salary);
       h+=row('Meals Monthly',d.meals_monthly);
       if(d.rent_monthly && parseFloat(d.rent_monthly) > 0){
         h+=row('Rent Monthly',d.rent_monthly);
@@ -560,13 +560,18 @@
       }
       h+=row('COLA',d.cola);
       h+=row('Leave Allowance',d.leave_allowance);
-      h+=row('Other Earnings',d.other_earnings);
+      if(d.other_earnings && parseFloat(d.other_earnings) > 0){
+        h+=row('Other Earnings',d.other_earnings);
+      }
       if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
         h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
       }
-
+      h+=row('PAYE Tax',undefined,d.paye);
+      h+=row('10% Tithe',undefined,d.tithe);
       h+=row('Future Savings',undefined,d.future_savings);
-      h+=row('Other Deductions',undefined,d.other_deductions);
+      if(d.other_deductions && parseFloat(d.other_deductions) > 0){
+        h+=row('Other Deductions',undefined,d.other_deductions);
+      }
     }
     h+='<tr class="total-row"><td>TOTAL</td><td>'+fmt(d.total_earnings)+'</td><td>'+fmt(d.total_deductions)+'</td></tr>';
     h+='</tbody></table></div>';

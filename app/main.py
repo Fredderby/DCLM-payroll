@@ -1559,16 +1559,27 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             payslips = db.query(PayrollRecord).filter(PayrollRecord.month == month).all()
             
             # Attach employee info to each payslip using robust name matching
+            from app.models.employee_alias import EmployeeAlias
             all_employees = {}
+            alias_lookup = {}
             for e in db.query(Employee).all():
                 all_employees[e.name] = e
                 all_employees[' '.join((e.name or '').split()).upper()] = e
+            # Build alias lookup: alias_name -> employee_id
+            for a in db.query(EmployeeAlias).all():
+                alias_lookup[a.alias_name] = a.employee_id
+                alias_lookup[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
             for p in payslips:
                 emp_name = (p.employee_name or '').strip()
                 emp = all_employees.get(emp_name)
                 if not emp:
                     normalized = ' '.join(emp_name.split()).upper()
                     emp = all_employees.get(normalized)
+                if not emp:
+                    # Check alias lookup
+                    aid = alias_lookup.get(emp_name) or alias_lookup.get(normalized)
+                    if aid:
+                        emp = db.query(Employee).filter(Employee.id == aid).first()
                 p.employee = emp
                 p.employee_map = emp
             

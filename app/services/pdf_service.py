@@ -331,20 +331,25 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
     else:
         # Non-Pastoral earnings
-        rows.append([Paragraph("Basic Salary", tl), v(payroll.basic_salary), v(None)])
+        rows.append([Paragraph("Monthly Basic Salary", tl), v(payroll.basic_salary), v(None)])
+        if float(payroll.meals_monthly or 0) > 0:
+            rows.append([Paragraph("Meals Monthly", tl), v(payroll.meals_monthly), v(None)])
         if float(payroll.rent_monthly or 0) > 0:
             rows.append([Paragraph("Rent Monthly", tl), v(payroll.rent_monthly), v(None)])
         if float(payroll.utility_monthly or 0) > 0:
             rows.append([Paragraph("Utility Monthly", tl), v(payroll.utility_monthly), v(None)])
         if float(payroll.transport_monthly or 0) > 0:
             rows.append([Paragraph("Transport Monthly", tl), v(payroll.transport_monthly), v(None)])
-        if float(payroll.other_earnings or 0) > 0:
-            rows.append([Paragraph("Other Earnings", tl), v(payroll.other_earnings), v(None)])
+        rows.append([Paragraph("COLA", tl), v(payroll.cola), v(None)])
         if float(payroll.leave_allowance or 0) > 0:
             rows.append([Paragraph("Leave Allowance", tl), v(payroll.leave_allowance), v(None)])
+        if float(payroll.other_earnings or 0) > 0:
+            rows.append([Paragraph("Other Earnings", tl), v(payroll.other_earnings), v(None)])
         # Non-Pastoral deductions
         if float(payroll.ssnit_deduction or 0) > 0:
             rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
+        rows.append([Paragraph("PAYE Tax", tl), v(None), v(payroll.paye)])
+        rows.append([Paragraph("10% Tithe", tl), v(None), v(payroll.tithe)])
         # PF 8% is used internally for calculations only - not displayed on payslip
         if float(payroll.future_savings or 0) > 0:
             rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
