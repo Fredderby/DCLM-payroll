@@ -1356,7 +1356,20 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         except Exception as e:
             pass  # PDF generation failed, preview still works
     
-    employee = db.query(Employee).filter(Employee.name == payroll.employee_name).first()
+    # Robust employee lookup with alias matching
+    from app.models.employee_alias import EmployeeAlias
+    emp_name = (payroll.employee_name or '').strip()
+    employee = db.query(Employee).filter(Employee.name == emp_name).first()
+    if not employee:
+        norm_name = ' '.join(emp_name.split()).upper()
+        employee = db.query(Employee).filter(Employee.name.ilike(norm_name.replace(' ', '%'))).first()
+    if not employee:
+        alias = db.query(EmployeeAlias).filter(
+            (EmployeeAlias.alias_name == emp_name) |
+            (EmployeeAlias.alias_name.ilike(norm_name))
+        ).first()
+        if alias:
+            employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
     
     emp_data = {
         "name": employee.name if employee else payroll.employee_name or "Unknown",

@@ -320,7 +320,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         # Pastoral earnings (all shown unconditionally to match preview)
         rows.append([Paragraph("Basic Salary", tl), v(payroll.basic_salary), v(None)])
         rows.append([Paragraph("Meals", tl), v(payroll.meals_monthly), v(None)])
-        rows.append([Paragraph("Responsibility", tl), v(payroll.responsibility_allowance), v(None)])
+        rows.append([Paragraph("Responsibility Allowance", tl), v(payroll.responsibility_allowance), v(None)])
         rows.append([Paragraph("COLA", tl), v(payroll.cola), v(None)])
         rows.append([Paragraph("Leave Allowance", tl), v(payroll.leave_allowance), v(None)])
         # Pastoral deductions (all shown unconditionally to match preview)
