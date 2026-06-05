@@ -313,7 +313,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     # Build payroll rows based on staff category
     staff_category = getattr(payroll, 'staff_category', 'pastoral') or 'pastoral'
     rows = [
-        [Paragraph("Description", yh), Paragraph("Amount (GHS)", yh), Paragraph("Deductions (GHS)", yh)],
+        [Paragraph("Description", th), Paragraph("Amount (GHS)", thr), Paragraph("Deductions (GHS)", thr)],
     ]
 
     if staff_category.lower() == 'pastoral':

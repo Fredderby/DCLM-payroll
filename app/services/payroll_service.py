@@ -7,7 +7,11 @@ import os
 
 
 def calculate_payroll_totals(earnings_dict, deductions_dict):
-    """Calculate totals for earnings and deductions"""
+    """Calculate totals for earnings and deductions.
+    
+    PF 8% is NOT included in total_deductions — it is stored separately
+    and subtracted from net salary after total_deductions.
+    """
     total_earnings = sum([
         float(earnings_dict.get('basic_salary', 0) or 0),
         float(earnings_dict.get('meals_monthly', 0) or 0),
@@ -20,17 +24,18 @@ def calculate_payroll_totals(earnings_dict, deductions_dict):
         float(earnings_dict.get('transport_monthly', 0) or 0),
     ])
 
+    # Total deductions EXCLUDES PF 8% — PF 8% is subtracted separately
     total_deductions = sum([
         float(deductions_dict.get('paye', 0) or 0),
         float(deductions_dict.get('tithe', 0) or 0),
         float(deductions_dict.get('future_savings', 0) or 0),
         float(deductions_dict.get('other_deductions', 0) or 0),
-        # Use pf_eight_percent as the active PF 8% field
-        float(deductions_dict.get('pf_eight_percent', 0) or 0),      # PF 8% for new uploads
         float(deductions_dict.get('ssnit_deduction', 0) or 0),       # SSNIT 5.5% for new uploads
     ])
 
-    net_salary = round(total_earnings - total_deductions, 2)
+    # PF 8% is stored in pf_eight_percent field and subtracted from net
+    pf_eight_val = float(deductions_dict.get('pf_eight_percent', 0) or 0)
+    net_salary = round(total_earnings - total_deductions - pf_eight_val, 2)
 
     return total_earnings, total_deductions, net_salary
 

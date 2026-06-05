@@ -1559,26 +1559,18 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
             payslips = db.query(PayrollRecord).filter(PayrollRecord.month == month).all()
             
             # Attach employee info to each payslip using robust name matching
-            all_employees = {e.name: e for e in db.query(Employee).all()}
+            all_employees = {}
+            for e in db.query(Employee).all():
+                all_employees[e.name] = e
+                all_employees[' '.join((e.name or '').split()).upper()] = e
             for p in payslips:
                 emp_name = (p.employee_name or '').strip()
-                # Try exact match first
                 emp = all_employees.get(emp_name)
                 if not emp:
-                    # Try case-insensitive match
-                    emp_name_upper = emp_name.upper()
-                    for e_name, e_obj in all_employees.items():
-                        if e_name.upper() == emp_name_upper:
-                            emp = e_obj
-                            break
-                if not emp:
-                    # Try normalized whitespace match
-                    emp_name_norm = ' '.join(emp_name.split())
-                    for e_name, e_obj in all_employees.items():
-                        if ' '.join((e_name or '').split()) == emp_name_norm:
-                            emp = e_obj
-                            break
+                    normalized = ' '.join(emp_name.split()).upper()
+                    emp = all_employees.get(normalized)
                 p.employee = emp
+                p.employee_map = emp
             
             # Apply filter (support both filter_by and email_filter query params)
             effective_filter = email_filter if email_filter else filter_by
