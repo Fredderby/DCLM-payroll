@@ -436,7 +436,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         tmp_path = tmp.name
 
     try:
-        records = process_payroll_excel(tmp_path, month, filename=original_filename)
+        records = process_payroll_excel(tmp_path, month, filename=original_filename, staff_category=staff_category)
         processed = 0
         errors = []
         unmatched_records = []  # Names that didn't match any registered employee

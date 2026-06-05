@@ -14,7 +14,7 @@ def normalize_col(name: str) -> str:
     return name.strip('_')
 
 
-def process_payroll_excel(file_path: str, month: str = None, filename: str = ""):
+def process_payroll_excel(file_path: str, month: str = None, filename: str = "", staff_category: str = None):
     """
     Process payroll Excel/CSV file with flexible column mapping.
     Supports various column names and extracts payroll data.
@@ -123,20 +123,8 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "")
             "Please use the correct payroll template for the staff category."
         )
 
-    # Detect staff category from column headers
-    pastoral_indicators = ['responsibility_allowance']
-    non_pastoral_indicators = ['monthly_basic_salary', 'rent_monthly', 'utility_monthly', 'transport_monthly', 'pf_eight_percent', 'ssnit_deduction']
-
-    has_pastoral = any(indicator in mapped_columns for indicator in pastoral_indicators)
-    has_non_pastoral = any(indicator in mapped_columns for indicator in non_pastoral_indicators)
-
-    if has_non_pastoral:
-        staff_category = "non_pastoral"
-    elif has_pastoral:
-        staff_category = "pastoral"
-    else:
-        # Default to pastoral if we can't determine
-        staff_category = "pastoral"
+    # Use explicitly provided staff_category, default to pastoral
+    staff_category = staff_category or "pastoral"
 
     records = []
     for _, row in df.iterrows():
