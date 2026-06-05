@@ -485,9 +485,19 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         'reason': reason,
                         'suggested_match': suggested_name
                     })
-                    continue
-
-                # --- Matched employee processing ---
+                    
+                    # Still create payroll record for unmatched employees using raw file data
+                    try:
+                        payroll_record = create_payroll_record(db, None, record)
+                        db.commit()
+                        processed += 1
+                        continue
+                    except Exception as e:
+                        db.rollback()
+                        errors.append(f"Error creating payroll for unmatched {emp_name}: {str(e)[:80]}")
+                        continue
+                else:
+                    # --- Matched employee processing ---
                 if record.get('employee_name'): employee.name = str(record['employee_name']).strip()
                 if record.get('function'): employee.function = str(record['function']).strip()
                 if record.get('designation'): employee.designation = str(record['designation']).strip()
