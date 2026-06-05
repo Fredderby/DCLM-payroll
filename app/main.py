@@ -498,77 +498,77 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         continue
                 else:
                     # --- Matched employee processing ---
-                if record.get('employee_name'): employee.name = str(record['employee_name']).strip()
-                if record.get('function'): employee.function = str(record['function']).strip()
-                if record.get('designation'): employee.designation = str(record['designation']).strip()
-                if record.get('location'): employee.location = str(record['location']).strip()
-                if record.get('bank_account'):
-                    from app.services.pdf_service import parse_bank_account
-                    bn, bk, bb = parse_bank_account(record.get('bank_account', ''))
-                    if bn: employee.bank_number = bn
-                    if bk: employee.bank_name = bk
-                    if bb: employee.bank_branch = bb
-                db.commit()
-
-                staff_category = record.get('staff_category', 'pastoral')
-
-                existing_payroll = db.query(PayrollRecord).filter(
-                    PayrollRecord.employee_name == employee.name, PayrollRecord.month == month
-                ).first()
-
-                if existing_payroll:
-                    existing_payroll.staff_category = staff_category
-                    existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
-                    existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
-                    existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
-                    existing_payroll.cola = record.get('cola', existing_payroll.cola)
-                    existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
-                    existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
-                    existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
-                    existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
-                    existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
-                    existing_payroll.paye = record.get('paye', existing_payroll.paye)
-                    existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
-                    existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
-                    existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
-                    existing_payroll.pf_eight_percent = record.get('pf_eight_percent', existing_payroll.pf_eight_percent)
-                    existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
-                    from app.services.payroll_service import calculate_payroll_totals
-                    earnings = {'basic_salary': existing_payroll.basic_salary, 'meals_monthly': existing_payroll.meals_monthly,
-                        'responsibility_allowance': existing_payroll.responsibility_allowance, 'cola': existing_payroll.cola,
-                        'leave_allowance': existing_payroll.leave_allowance, 'other_earnings': existing_payroll.other_earnings,
-                        'rent_monthly': existing_payroll.rent_monthly, 'utility_monthly': existing_payroll.utility_monthly,
-                        'transport_monthly': existing_payroll.transport_monthly}
-                    deductions = {'paye': existing_payroll.paye, 'tithe': existing_payroll.tithe,
-                        'future_savings': existing_payroll.future_savings, 'other_deductions': existing_payroll.other_deductions,
-                        'ssnit_deduction': existing_payroll.ssnit_deduction,
-                        'pf_eight_percent': existing_payroll.pf_eight_percent}
-                    total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
-                    existing_payroll.total_earnings = total_earnings
-                    existing_payroll.total_deductions = total_deductions
-                    existing_payroll.net_salary = net_salary
-                    if existing_payroll.pdf_generated:
-                        try:
-                            if os.path.exists(existing_payroll.pdf_generated): os.remove(existing_payroll.pdf_generated)
-                        except: pass
-                        existing_payroll.pdf_generated = None
-                    db.commit()
-                else:
-                    employee.email = record.get('email', employee.email)
-                    employee.function = record.get('function', employee.function)
-                    employee.designation = record.get('designation', employee.designation)
-                    employee.location = record.get('location', employee.location)
-                    employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
-                    employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
-                    dj_val = record.get('date_joined', None)
-                    if dj_val is not None:
-                        parsed_dj = parse_date_joined(dj_val)
-                        if parsed_dj:
-                            employee.date_joined = parsed_dj
-                    payroll_record = create_payroll_record(db, employee, record)
+                    if record.get('employee_name'): employee.name = str(record['employee_name']).strip()
+                    if record.get('function'): employee.function = str(record['function']).strip()
+                    if record.get('designation'): employee.designation = str(record['designation']).strip()
+                    if record.get('location'): employee.location = str(record['location']).strip()
+                    if record.get('bank_account'):
+                        from app.services.pdf_service import parse_bank_account
+                        bn, bk, bb = parse_bank_account(record.get('bank_account', ''))
+                        if bn: employee.bank_number = bn
+                        if bk: employee.bank_name = bk
+                        if bb: employee.bank_branch = bb
                     db.commit()
 
-                processed += 1
+                    staff_category = record.get('staff_category', 'pastoral')
+
+                    existing_payroll = db.query(PayrollRecord).filter(
+                        PayrollRecord.employee_name == employee.name, PayrollRecord.month == month
+                    ).first()
+
+                    if existing_payroll:
+                        existing_payroll.staff_category = staff_category
+                        existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
+                        existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
+                        existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
+                        existing_payroll.cola = record.get('cola', existing_payroll.cola)
+                        existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
+                        existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
+                        existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
+                        existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
+                        existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
+                        existing_payroll.paye = record.get('paye', existing_payroll.paye)
+                        existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
+                        existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
+                        existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
+                        existing_payroll.pf_eight_percent = record.get('pf_eight_percent', existing_payroll.pf_eight_percent)
+                        existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
+                        from app.services.payroll_service import calculate_payroll_totals
+                        earnings = {'basic_salary': existing_payroll.basic_salary, 'meals_monthly': existing_payroll.meals_monthly,
+                            'responsibility_allowance': existing_payroll.responsibility_allowance, 'cola': existing_payroll.cola,
+                            'leave_allowance': existing_payroll.leave_allowance, 'other_earnings': existing_payroll.other_earnings,
+                            'rent_monthly': existing_payroll.rent_monthly, 'utility_monthly': existing_payroll.utility_monthly,
+                            'transport_monthly': existing_payroll.transport_monthly}
+                        deductions = {'paye': existing_payroll.paye, 'tithe': existing_payroll.tithe,
+                            'future_savings': existing_payroll.future_savings, 'other_deductions': existing_payroll.other_deductions,
+                            'ssnit_deduction': existing_payroll.ssnit_deduction,
+                            'pf_eight_percent': existing_payroll.pf_eight_percent}
+                        total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
+                        existing_payroll.total_earnings = total_earnings
+                        existing_payroll.total_deductions = total_deductions
+                        existing_payroll.net_salary = net_salary
+                        if existing_payroll.pdf_generated:
+                            try:
+                                if os.path.exists(existing_payroll.pdf_generated): os.remove(existing_payroll.pdf_generated)
+                            except: pass
+                            existing_payroll.pdf_generated = None
+                        db.commit()
+                    else:
+                        employee.email = record.get('email', employee.email)
+                        employee.function = record.get('function', employee.function)
+                        employee.designation = record.get('designation', employee.designation)
+                        employee.location = record.get('location', employee.location)
+                        employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
+                        employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
+                        dj_val = record.get('date_joined', None)
+                        if dj_val is not None:
+                            parsed_dj = parse_date_joined(dj_val)
+                            if parsed_dj:
+                                employee.date_joined = parsed_dj
+                        payroll_record = create_payroll_record(db, employee, record)
+                        db.commit()
+
+                    processed += 1
             except Exception as e:
                 db.rollback()
                 errors.append(f"Error processing {record.get('employee_name', 'Unknown')}: {str(e)[:80]}")
