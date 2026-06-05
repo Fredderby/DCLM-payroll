@@ -1248,23 +1248,22 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         total_payslips = query.count()
         payslips = query.order_by(PayrollRecord.employee_name).all()
         
-        # Build employee lookup with normalized keys (whitespace-collapsed, uppercased)
+        # Build employee lookup with multiple key strategies
         all_emps = db.query(Employee).all()
         all_employees = {}
         for e in all_emps:
-            # Store keyed by original name AND normalized name
             all_employees[e.name] = e
             all_employees[' '.join((e.name or '').split()).upper()] = e
         
         for p in payslips:
             emp_name = (p.employee_name or '').strip()
-            # Try exact match first
             emp = all_employees.get(emp_name)
             if not emp:
-                # Try normalized whitespace, case-insensitive match
                 normalized = ' '.join(emp_name.split()).upper()
                 emp = all_employees.get(normalized)
             p.employee = emp
+            # Attach employee_map for template use (works even when emp is None)
+            p.employee_map = emp
         
         # Generate stats from all records
         if selected_month:
@@ -1537,7 +1536,7 @@ async def send_payslip_redirect(request: Request, msg: str, msg_type: str = "err
 
 @app.get("/payslips/send", response_class=HTMLResponse)
 @app.get("/payslips/send-all", response_class=HTMLResponse)
-async def send_all_payslips_page(request: Request, db: Session = Depends(get_db), month: str = None, filter_by: str = "all", email_filter: str = None):
+async def send_all_payslips_page(request: Request, db: Session = Depends(get_db), month: str = None, filter_by: str = "all", email_filter: str = None, has_email: str = None):
     """Page to send all payslips for a specific month. Auto-selects latest month."""
     try:
         current_user = get_current_user_web(request, db)

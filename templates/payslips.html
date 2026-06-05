@@ -80,16 +80,17 @@
 <!-- Cards View (default) -->
 <div id="cardsView" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px;">
   {% for p in payslips %}
-  <div class="payslip-card" data-name="{{ (p.employee.name if p.employee else p.employee_name)|lower }}" data-email="{{ (p.employee.email if p.employee else '')|lower }}" data-month="{{ p.month }}">
+  {% set emp = p.employee_map if p.employee_map is defined else p.employee %}
+  <div class="payslip-card" data-name="{{ (emp.name if emp else p.employee_name)|lower }}" data-email="{{ (emp.email if emp else '')|lower }}" data-month="{{ p.month }}">
     <div class="payslip-card-header">
       <div class="payslip-card-avatar">
-        <span>{{ ((p.employee.name if p.employee else p.employee_name)[:2]|upper) if (p.employee.name if p.employee else p.employee_name) else '??' }}</span>
+        <span>{{ ((emp.name if emp else p.employee_name)[:2]|upper) if (emp.name if emp else p.employee_name) else '??' }}</span>
       </div>
       <div class="payslip-card-info">
-        <h4 class="payslip-card-name">{{ p.employee.name if p.employee else p.employee_name }}</h4>
+        <h4 class="payslip-card-name">{{ emp.name if emp else p.employee_name }}</h4>
         <span class="payslip-card-meta">
           <span class="badge badge-info">{{ p.month }}</span>
-          <span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span>
+          <span class="badge badge-secondary">{{ emp.employee_number if emp else 'N/A' }}</span>
         </span>
       </div>
       <div class="payslip-card-status">
@@ -141,10 +142,11 @@
       </thead>
       <tbody>
         {% for p in payslips %}
-        <tr data-name="{{ (p.employee.name if p.employee else p.employee_name)|lower }}" data-email="{{ (p.employee.email if p.employee else '')|lower }}" data-month="{{ p.month }}">
-          <td><strong>{{ p.employee.name if p.employee else p.employee_name }}</strong></td>
-          <td><span class="badge badge-secondary">{{ p.employee.employee_number if p.employee else 'N/A' }}</span></td>
-          <td><small>{{ p.employee.email if p.employee else '—' }}</small></td>
+        {% set emp = p.employee_map if p.employee_map is defined else p.employee %}
+        <tr data-name="{{ (emp.name if emp else p.employee_name)|lower }}" data-email="{{ (emp.email if emp else '')|lower }}" data-month="{{ p.month }}">
+          <td><strong>{{ emp.name if emp else p.employee_name }}</strong></td>
+          <td><span class="badge badge-secondary">{{ emp.employee_number if emp else 'N/A' }}</span></td>
+          <td><small>{{ emp.email if emp else '—' }}</small></td>
           <td><span class="badge badge-info">{{ p.month }}</span></td>
           <td>GHS {{ "{:,.2f}".format(p.basic_salary or 0) }}</td>
           <td><strong>GHS {{ "{:,.2f}".format(p.net_salary or 0) }}</strong></td>
