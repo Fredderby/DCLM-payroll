@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Employee Alias Management - DCLM Payroll{% endblock %}
+
+{% block head %}
+<style>
+  .alias-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .alias-table th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #f8f9fa;
+  }
+  .alias-table td {
+    vertical-align: middle;
+  }
+  .emp-select-results {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: none;
+    position: absolute;
+    background: #fff;
+    z-index: 1000;
+    width: 100%;
+  }
+  .emp-select-results .result-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+  }
+  .emp-select-results .result-item:hover {
+    background: #e8f0fe;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid" style="max-width: 1200px; margin: 0 auto; padding: 20px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="fas fa-link"></i> Employee Alias Management</h4>
+    <div>
+      <a href="/aliases" class="btn btn-sm btn-outline-secondary"><i class="fas fa-sync"></i> Refresh</a>
+    </div>
+  </div>
+
+  {% if request.query_params.get('message') %}
+  <div class="alert alert-success alert-dismissible fade show">
+    <i class="fas fa-check-circle"></i> {{ request.query_params.get('message') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger alert-dismissible fade show">
+    <i class="fas fa-exclamation-circle"></i> {{ request.query_params.get('error') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-md-4">
+      <div class="alias-card">
+        <h5 class="mb-3"><i class="fas fa-plus-circle text-success"></i> Add New Alias</h5>
+        <form method="POST" action="/aliases/add" id="aliasForm">
+          <div class="mb-3">
+            <label class="form-label" style="font-size:13px;">Alias Name (from payroll file)</label>
+            <input type="text" name="alias_name" class="form-control form-control-sm" required
+                   placeholder="e.g. K. Gyeabour-Boateng">
+          </div>
+          <div class="mb-3" style="position: relative;">
+            <label class="form-label" style="font-size:13px;">Match to Employee</label>
+            <input type="text" id="empSearchInput" class="form-control form-control-sm"
+                   placeholder="Search employee name..." autocomplete="off">
+            <input type="hidden" name="employee_id" id="selectedEmployeeId">
+            <div id="empSearchResults" class="emp-select-results"></div>
+            <div id="selectedEmployeeDisplay" style="margin-top: 6px; font-size:12px; color:#666; display:none;">
+              <i class="fas fa-check-circle text-success"></i> Selected: <span id="selectedEmployeeName"></span>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-sm btn-primary w-100">
+            <i class="fas fa-save"></i> Save Alias
+          </button>
+        </form>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <div class="alias-card">
+        <h5 class="mb-3"><i class="fas fa-list"></i> Existing Aliases</h5>
+        {% if aliases %}
+        <div class="table-responsive">
+          <table class="table table-sm alias-table">
+            <thead>
+              <tr>
+                <th>Alias Name</th>
+                <th>Matched Employee</th>
+                <th>Employee Number</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in aliases %}
+              <tr>
+                <td><code>{{ a.alias_name }}</code></td>
+                <td>{{ a.employee_name }}</td>
+                <td>{{ a.employee_number or '—' }}</td>
+                <td style="font-size:11px;">{{ a.created_at.strftime('%b %d, %Y') if a.created_at else '—' }}</td>
+                <td>
+                  <form method="POST" action="/aliases/delete/{{ a.id }}" style="display:inline;"
+                        onsubmit="return confirm('Delete this alias?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                      <i class="fas fa-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0"><i class="fas fa-info-circle"></i> No aliases created yet. Add one above.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Employee search for alias creation
+var searchInput = document.getElementById('empSearchInput');
+var resultsDiv = document.getElementById('empSearchResults');
+var selectedId = document.getElementById('selectedEmployeeId');
+var selectedDisplay = document.getElementById('selectedEmployeeDisplay');
+var selectedName = document.getElementById('selectedEmployeeName');
+var searchTimer = null;
+
+searchInput.addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  var q = this.value.trim();
+  if (q.length < 2) {
+    resultsDiv.style.display = 'none';
+    return;
+  }
+  searchTimer = setTimeout(function() {
+    fetch('/aliases/search-employees?q=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        resultsDiv.innerHTML = '';
+        if (data.length === 0) {
+          resultsDiv.innerHTML = '<div class="result-item text-muted">No employees found</div>';
+        } else {
+          data.forEach(function(emp) {
+            var div = document.createElement('div');
+            div.className = 'result-item';
+            div.innerHTML = '<strong>' + emp.name + '</strong> <span class="text-muted">(' + (emp.employee_number || '') + ')</span>';
+            div.addEventListener('click', function() {
+              selectedId.value = emp.id;
+              selectedName.textContent = emp.name + ' (' + (emp.employee_number || '') + ')';
+              selectedDisplay.style.display = 'block';
+              searchInput.value = emp.name;
+              resultsDiv.style.display = 'none';
+            });
+            resultsDiv.appendChild(div);
+          });
+        }
+        resultsDiv.style.display = 'block';
+      });
+  }, 300);
+});
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#empSearchResults') && !e.target.closest('#empSearchInput')) {
+    resultsDiv.style.display = 'none';
+  }
+});
+</script>
+{% endblock %}

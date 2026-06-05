@@ -345,8 +345,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         # Non-Pastoral deductions
         if float(payroll.ssnit_deduction or 0) > 0:
             rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
-        if float(payroll.employee_pf or 0) > 0:
-            rows.append([Paragraph("Employee PF (8%)", tl), v(None), v(payroll.employee_pf)])
+        # PF 8% is used internally for calculations only - not displayed on payslip
         if float(payroll.future_savings or 0) > 0:
             rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
         if float(payroll.other_deductions or 0) > 0:

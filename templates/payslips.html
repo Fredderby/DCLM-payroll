@@ -562,9 +562,7 @@
       if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
         h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
       }
-      if(d.employee_pf && parseFloat(d.employee_pf) > 0){
-        h+=row('Employee PF (8%)',undefined,d.employee_pf);
-      }
+
       h+=row('Future Savings',undefined,d.future_savings);
       h+=row('Other Deductions',undefined,d.other_deductions);
     }

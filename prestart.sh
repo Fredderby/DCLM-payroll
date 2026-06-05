@@ -45,7 +45,7 @@ migrations = [
     (\"rent_monthly\", \"ALTER TABLE payroll_records ADD COLUMN rent_monthly FLOAT DEFAULT 0\"),
     (\"utility_monthly\", \"ALTER TABLE payroll_records ADD COLUMN utility_monthly FLOAT DEFAULT 0\"),
     (\"transport_monthly\", \"ALTER TABLE payroll_records ADD COLUMN transport_monthly FLOAT DEFAULT 0\"),
-    (\"employee_pf\", \"ALTER TABLE payroll_records ADD COLUMN employee_pf FLOAT DEFAULT 0\"),
+    (\"pf_eight_percent\", \"ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0\"),
     (\"ssnit_deduction\", \"ALTER TABLE payroll_records ADD COLUMN ssnit_deduction FLOAT DEFAULT 0\"),
     (\"pf_eight_percent\", \"ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0\"),
 ]
@@ -74,7 +74,18 @@ upload_migrations = [
     ("imported_count", "ALTER TABLE upload_history ADD COLUMN imported_count INTEGER DEFAULT 0"),
     ("skipped_count", "ALTER TABLE upload_history ADD COLUMN skipped_count INTEGER DEFAULT 0"),
     ("skip_reasons", "ALTER TABLE upload_history ADD COLUMN skip_reasons TEXT"),
+    ("payroll_type", "ALTER TABLE upload_history ADD COLUMN payroll_type VARCHAR(50)"),
+    ("unmatched_count", "ALTER TABLE upload_history ADD COLUMN unmatched_count INTEGER DEFAULT 0"),
 ]
+
+# Create upload_mismatches table if not exists
+print("Creating upload_mismatches table...")
+try:
+    from app.models.upload_mismatch import UploadMismatch
+    Base.metadata.create_all(bind=engine)
+    print('  ✓ upload_mismatches table ready')
+except Exception as e:
+    print(f'  - Could not create upload_mismatches: {e}')
 
 try:
     result = conn.execute(sa.text('SHOW COLUMNS FROM upload_history'))

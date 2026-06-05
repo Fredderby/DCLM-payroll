@@ -12,6 +12,82 @@
 {% if success %}
 <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ success }}</div>
 {% endif %}
+{% if message %}
+<div class="alert alert-info" style="font-size: 15px;">
+  <i class="fas fa-upload"></i> {{ message }}
+</div>
+{% endif %}
+{% if errors %}
+<div class="alert alert-warning">
+  <i class="fas fa-exclamation-triangle"></i> Issues encountered:
+  <ul style="margin: 8px 0 0 16px;">
+    {% for e in errors %}
+    <li>{{ e }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% if unmatched_records %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h5 class="mb-0"><i class="fas fa-exclamation-triangle text-warning"></i> Unmatched Records ({{ unmatched_count }})</h5>
+    <button class="btn btn-sm btn-outline-secondary" onclick="downloadUnmatchedCSV()">
+      <i class="fas fa-download"></i> Download Unmatched Records
+    </button>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+      <table class="table table-sm table-striped mb-0" id="unmatchedTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Employee Name</th>
+            <th>Employee Number</th>
+            <th>Email</th>
+            <th>Payroll Type</th>
+            <th>Month</th>
+            <th>Reason</th>
+            <th>Suggested Match</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ur in unmatched_records %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ ur.name }}</td>
+            <td>{{ ur.number or '—' }}</td>
+            <td>{{ ur.email or '—' }}</td>
+            <td>{{ ur.payroll_type or ur.reason.split('(')[-1].rstrip(')') if ')' in ur.reason else 'N/A' }}</td>
+            <td>{{ request.query_params.get('month', '') }}</td>
+            <td><span class="badge bg-warning text-dark">{{ ur.reason }}</span></td>
+            <td>{{ ur.suggested or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+function downloadUnmatchedCSV() {
+  var rows = [['Employee Name', 'Employee Number', 'Email', 'Payroll Type', 'Month', 'Reason', 'Suggested Match']];
+  document.querySelectorAll('#unmatchedTable tbody tr').forEach(function(tr) {
+    var cols = tr.querySelectorAll('td');
+    var row = [];
+    for (var i = 1; i < cols.length; i++) {
+      row.push('"' + (cols[i].textContent.trim() || '') + '"');
+    }
+    rows.push(row.join(','));
+  });
+  var csv = rows.join('\\n');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'unmatched_records_{{ request.query_params.get("month", "unknown") }}.csv';
+  a.click();
+}
+</script>
+{% endif %}
 
 <div class="row g-4">
   <div class="col-lg-8">

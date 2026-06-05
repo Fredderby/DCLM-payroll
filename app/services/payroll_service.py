@@ -25,9 +25,9 @@ def calculate_payroll_totals(earnings_dict, deductions_dict):
         float(deductions_dict.get('tithe', 0) or 0),
         float(deductions_dict.get('future_savings', 0) or 0),
         float(deductions_dict.get('other_deductions', 0) or 0),
-        float(deductions_dict.get('employee_pf', 0) or 0),           # Historical - kept for existing records
-        float(deductions_dict.get('ssnit_deduction', 0) or 0),       # SSNIT 5.5% for new uploads
+        # Use pf_eight_percent as the active PF 8% field
         float(deductions_dict.get('pf_eight_percent', 0) or 0),      # PF 8% for new uploads
+        float(deductions_dict.get('ssnit_deduction', 0) or 0),       # SSNIT 5.5% for new uploads
     ])
 
     net_salary = round(total_earnings - total_deductions, 2)
@@ -54,7 +54,6 @@ def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
     }
 
     ssnit_val = payroll_data.get('ssnit_deduction', 0) or 0
-    pf_val = payroll_data.get('employee_pf', 0) or 0
     pf_eight = payroll_data.get('pf_eight_percent', 0) or 0
 
     deductions = {
@@ -62,9 +61,8 @@ def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
         'tithe': payroll_data.get('tithe', 0),
         'future_savings': payroll_data.get('future_savings', 0),
         'other_deductions': payroll_data.get('other_deductions', 0),
-        'employee_pf': pf_val,           # Historical - kept for existing records
-        'ssnit_deduction': ssnit_val,    # SSNIT 5.5% - primary deduction for new uploads
-        'pf_eight_percent': pf_eight,    # PF 8% - used for payroll calculations
+        'ssnit_deduction': ssnit_val,              # SSNIT 5.5% - primary deduction for new uploads
+        'pf_eight_percent': pf_eight,              # PF 8% - the active PF 8% field (used once)
     }
 
     total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
@@ -87,9 +85,8 @@ def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
         tithe=deductions['tithe'],
         future_savings=deductions['future_savings'],
         other_deductions=deductions['other_deductions'],
-        employee_pf=deductions['employee_pf'],         # Historical - kept for existing records
-        ssnit_deduction=deductions['ssnit_deduction'], # SSNIT 5.5% for new uploads
-        pf_eight_percent=deductions['pf_eight_percent'], # PF 8% for new uploads
+        ssnit_deduction=deductions['ssnit_deduction'],       # SSNIT 5.5% for new uploads
+        pf_eight_percent=deductions['pf_eight_percent'],     # PF 8% for new uploads (active field)
         total_deductions=total_deductions,
         net_salary=net_salary
     )

@@ -377,6 +377,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
     from app.models.employee import Employee
     from app.models.payroll import PayrollRecord
     from app.models.upload_history import UploadHistory
+    from app.models.upload_mismatch import UploadMismatch
     from datetime import datetime, date
     import tempfile
     import os
@@ -395,7 +396,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
     original_filename = file.filename
 
     # Auto-detect month from filename if not explicitly provided
-    # Try to extract month patterns like "January 2025", "Jan 2025", "2025-01" from filename
     if not month:
         import re
         month_patterns = [
@@ -409,7 +409,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
             if match:
                 groups = match.groups()
                 if len(groups) == 2:
-                    # Check if first group is a month name
                     month_names = {'january': 'January', 'february': 'February', 'march': 'March',
                                    'april': 'April', 'may': 'May', 'june': 'June', 'july': 'July',
                                    'august': 'August', 'september': 'September', 'october': 'October',
@@ -421,7 +420,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     if first in month_names:
                         month = f"{month_names[first]} {groups[1]}"
                         break
-                    # Check if first is a year
                     try:
                         yr = int(groups[0])
                         if yr > 2000 and yr < 2100:
@@ -432,6 +430,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                                 break
                     except ValueError:
                         pass
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -441,52 +440,54 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         processed = 0
         errors = []
         unmatched_records = []  # Names that didn't match any registered employee
-        
-        # Track IDs of employees that appear in the file
-        matched_emp_ids = set()
+        upload_mismatch_entries = []  # For storing in upload_mismatches table
+        staff_category_detected = None
 
         logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}'")
 
         for record in records:
-            skip_reason = None
             try:
                 emp_no = str(record.get('employee_number', '') or '').strip()
                 emp_email = str(record.get('email', '') or '').strip()
                 emp_name = str(record.get('employee_name', '') or '').strip()
-                emp_name_norm = ' '.join(emp_name.split()).upper()
+                staff_category = record.get('staff_category', 'pastoral')
+                if not staff_category_detected:
+                    staff_category_detected = staff_category
 
-                if not emp_name_norm:
-                    unmatched_records.append({'name': emp_no or emp_email or 'Unknown', 'number': emp_no, 'email': emp_email, 'reason': 'Missing employee name'})
+                # Attempt matching in priority order
+                employee, is_exact, suggested_name = find_best_employee_match(emp_no, emp_name, emp_email, db)
+
+                if not employee:
+                    # Determine reason
+                    reason = 'Employee not registered'
+                    if emp_no and not emp_name:
+                        reason = 'Missing employee name'
+                    elif emp_no and emp_email and not is_exact:
+                        reason = 'Name mismatch'
+                    elif not emp_no and not emp_email:
+                        reason = 'Missing employee number and name mismatch'
+                    else:
+                        reason = 'Employee not registered'
+                    
+                    unmatched_records.append({
+                        'name': emp_name or emp_no or 'Unknown',
+                        'number': emp_no,
+                        'email': emp_email,
+                        'reason': reason,
+                        'suggested': suggested_name
+                    })
+                    upload_mismatch_entries.append({
+                        'employee_name': emp_name or emp_no or 'Unknown',
+                        'employee_number': emp_no or '',
+                        'email': emp_email or '',
+                        'payroll_type': staff_category,
+                        'month': month,
+                        'reason': reason,
+                        'suggested_match': suggested_name
+                    })
                     continue
 
-                employee = None
-                all_emps = db.query(Employee).all()
-                name_lookup = {}
-                for e in all_emps:
-                    norm = ' '.join((e.name or '').split()).upper()
-                    name_lookup[norm] = e
-
-                if emp_name_norm in name_lookup:
-                    employee = name_lookup[emp_name_norm]
-                if not employee:
-                    employee = db.query(Employee).filter(Employee.name.ilike(f'%{emp_name}%')).first()
-                if not employee:
-                    for part in emp_name_norm.split():
-                        if len(part) > 2:
-                            for norm, e in name_lookup.items():
-                                if part in norm:
-                                    employee = e
-                                    break
-                            if employee: break
-                if not employee and emp_no:
-                    employee = db.query(Employee).filter(Employee.employee_number == emp_no).first()
-                if not employee and emp_email:
-                    employee = db.query(Employee).filter(Employee.email == emp_email).first()
-
-                if not employee:
-                    unmatched_records.append({'name': emp_name, 'number': emp_no, 'email': emp_email, 'reason': f"No employee found matching name '{emp_name}'"})
-                    continue
-
+                # --- Matched employee processing ---
                 if record.get('employee_name'): employee.name = str(record['employee_name']).strip()
                 if record.get('function'): employee.function = str(record['function']).strip()
                 if record.get('designation'): employee.designation = str(record['designation']).strip()
@@ -499,7 +500,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     if bb: employee.bank_branch = bb
                 db.commit()
 
-                matched_emp_ids.add(employee.id)
                 staff_category = record.get('staff_category', 'pastoral')
 
                 existing_payroll = db.query(PayrollRecord).filter(
@@ -521,7 +521,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
                     existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
                     existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
-                    existing_payroll.employee_pf = record.get('employee_pf', existing_payroll.employee_pf)
                     existing_payroll.pf_eight_percent = record.get('pf_eight_percent', existing_payroll.pf_eight_percent)
                     existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
                     from app.services.payroll_service import calculate_payroll_totals
@@ -532,7 +531,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         'transport_monthly': existing_payroll.transport_monthly}
                     deductions = {'paye': existing_payroll.paye, 'tithe': existing_payroll.tithe,
                         'future_savings': existing_payroll.future_savings, 'other_deductions': existing_payroll.other_deductions,
-                        'employee_pf': existing_payroll.employee_pf, 'ssnit_deduction': existing_payroll.ssnit_deduction,
+                        'ssnit_deduction': existing_payroll.ssnit_deduction,
                         'pf_eight_percent': existing_payroll.pf_eight_percent}
                     total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
                     existing_payroll.total_earnings = total_earnings
@@ -545,7 +544,6 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         existing_payroll.pdf_generated = None
                     db.commit()
                 else:
-                    employee.name = record.get('employee_name', employee.name)
                     employee.email = record.get('email', employee.email)
                     employee.function = record.get('function', employee.function)
                     employee.designation = record.get('designation', employee.designation)
@@ -553,10 +551,10 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                     employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
                     employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
                     dj_val = record.get('date_joined', None)
-                    if dj_val and str(dj_val).strip().lower() not in ('nan', 'none', ''):
-                        parsed_dj = parse_date_joined(str(dj_val))
-                        if parsed_dj: employee.date_joined = parsed_dj
-                    else: employee.date_joined = getattr(employee, 'date_joined', None)
+                    if dj_val is not None:
+                        parsed_dj = parse_date_joined(dj_val)
+                        if parsed_dj:
+                            employee.date_joined = parsed_dj
                     payroll_record = create_payroll_record(db, employee, record)
                     db.commit()
 
@@ -565,47 +563,86 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                 db.rollback()
                 errors.append(f"Error processing {record.get('employee_name', 'Unknown')}: {str(e)[:80]}")
 
-        all_emp_ids = {r.id for r in db.query(Employee.id).all()}
-        missing_emp_ids = all_emp_ids - matched_emp_ids
-        missing_employees = []
-        if missing_emp_ids:
-            missing_emps = db.query(Employee).filter(Employee.id.in_(missing_emp_ids)).order_by(Employee.name).all()
-            missing_employees = [e for e in missing_emps if e.name]
-
         from app.services.cache_service import clear_cache
         clear_cache()
 
         try:
-            import json
-            skip_details = []
-            for ur in unmatched_records:
-                skip_details.append({'name': ur.get('name', 'Unknown'), 'employee_number': ur.get('number', ''), 'email': ur.get('email', ''), 'reason': ur.get('reason', 'No matching employee found')})
-            for mer in missing_employees:
-                skip_details.append({'name': mer.name, 'employee_number': mer.employee_number, 'email': mer.email, 'reason': 'Registered employee not found in upload file (may be terminated)'})
             total_records_in_file = len(records) if records else 0
+            unmatched_count = len(unmatched_records)
+            
+            # Create upload history record - do NOT store large JSON payloads
             upload_history = UploadHistory(
-                file_name=original_filename, uploaded_by=current_user.id, month=month,
-                total_employees=total_records_in_file, imported_count=processed,
-                skipped_count=len(unmatched_records) + len(missing_employees),
-                skip_reasons=json.dumps(skip_details),
-                status="success" if processed > 0 and len(errors) == 0 else "partial_failure" if processed > 0 else "failed"
+                file_name=original_filename,
+                uploaded_by=current_user.id,
+                month=month,
+                payroll_type=staff_category_detected,
+                total_employees=total_records_in_file,
+                imported_count=processed,
+                unmatched_count=unmatched_count,
+                skip_reasons=None,  # No large JSON payloads stored here
+                status="success" if processed > 0 else "failed"
             )
             db.add(upload_history)
+            db.flush()
+
+            # Store mismatches in dedicated table
+            upload_history_id = upload_history.id
+            for entry in upload_mismatch_entries:
+                mismatch = UploadMismatch(
+                    upload_id=upload_history_id,
+                    employee_name=entry['employee_name'],
+                    employee_number=entry['employee_number'],
+                    email=entry['email'],
+                    payroll_type=entry['payroll_type'],
+                    month=entry['month'],
+                    reason=entry['reason'],
+                    suggested_match=entry.get('suggested_match')
+                )
+                db.add(mismatch)
             db.commit()
         except Exception as log_err:
             print(f"Warning: Could not log upload history: {log_err}")
             db.rollback()
+            upload_history_id = None
 
         summary_parts = []
-        if processed: summary_parts.append(f"Successfully uploaded {processed} payroll record(s) for {month}")
-        if unmatched_records: summary_parts.append(f"{len(unmatched_records)} name(s) did not match any registered employee (skipped)")
-        if missing_employees: summary_parts.append(f"{len(missing_employees)} registered employee(s) not in this file (may be terminated)")
-        msg = ". ".join(summary_parts) + "." if summary_parts else "No data processed."
+        if processed:
+            summary_parts.append(f"Total Records Uploaded: {total_records_in_file}")
+            summary_parts.append(f"Successfully Matched: {processed}")
+        if unmatched_records:
+            summary_parts.append(f"Unmatched Records: {unmatched_count}")
+        msg = " | ".join(summary_parts) if summary_parts else "No data processed."
+
+        # Build unmatched record list with mismatch IDs for resolution
+        unmatched_with_ids = []
+        for i, ur in enumerate(unmatched_records):
+            unmatched_with_ids.append({
+                'name': ur.get('name', 'Unknown'),
+                'number': ur.get('number', ''),
+                'email': ur.get('email', ''),
+                'reason': ur.get('reason', ''),
+                'suggested': ur.get('suggested', ''),
+                'payroll_type': ur.get('payroll_type', staff_category_detected or ''),
+                'mismatch_id': i + 1
+            })
+        
+        # Create all_emps list for resolution dropdown
+        all_emps = db.query(Employee).order_by(Employee.name).all()
+        all_emps_list = [{"id": e.id, "name": e.name, "employee_number": e.employee_number} for e in all_emps]
 
         template = templates.get_template("upload.html")
         rendered = template.render({
-            "user": current_user, "message": msg, "errors": errors[:5],
-            "unmatched_records": unmatched_records, "missing_employees": missing_employees, "processed_count": processed
+            "user": current_user,
+            "message": msg,
+            "errors": errors[:5],
+            "unmatched_records": unmatched_with_ids,
+            "processed_count": processed,
+            "total_count": total_records_in_file,
+            "unmatched_count": unmatched_count,
+            "all_employees": all_emps_list,
+            "staff_category_detected": staff_category_detected,
+            "month": month,
+            "upload_id": upload_history_id
         })
         return HTMLResponse(content=rendered, media_type="text/html")
 
@@ -701,9 +738,10 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
         ext = file.filename.rsplit('.', 1)[-1].lower()
         
         if ext == 'csv':
-            df = pd.read_csv(BytesIO(contents), dtype=str)
+            df = pd.read_csv(BytesIO(contents))
         elif ext in ('xlsx', 'xls'):
-            df = pd.read_excel(BytesIO(contents), dtype=str)
+            # Read without dtype=str so pandas preserves Timestamps for date columns
+            df = pd.read_excel(BytesIO(contents))
         else:
             employees = db.query(Employee).all()
             template = templates.get_template("staff.html")
@@ -724,7 +762,7 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
             'bank_number': ['bank_number', 'bank_no', 'account_number', 'bankaccount', 'bank_acc'],
             'bank_name': ['bank_name', 'bank', 'bankname'],
             'bank_branch': ['bank_branch', 'branch', 'bankbranch'],
-            'date_joined': ['date_joined', 'joined_date', 'start_date', 'employment_date', 'doj']
+            'date_joined': ['date_joined', 'joined_date', 'start_date', 'employment_date', 'doj', 'date joined', 'joining_date', 'date_of_joining']
         }
         
         normalized_cols = {}
@@ -781,10 +819,7 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
                 skipped_count += 1
                 continue
             
-            date_obj = None
-            date_str = str(row.get('date_joined', '') or '').strip()
-            if date_str and date_str.lower() not in ('nan', 'none', ''):
-                date_obj = parse_date_joined(date_str)
+            date_obj = parse_date_joined(row.get('date_joined'))
             
             def parse_float(val, default=0):
                 try:
@@ -827,28 +862,163 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
         template = templates.get_template("staff.html")
         return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": f"Upload failed: {str(e)}"}), media_type="text/html")
 
-def parse_date_joined(date_str):
-    """Parse date_joined from various formats: YYYY-MM-DD, Month DD, YYYY, etc."""
-    if not date_str or not str(date_str).strip():
+def normalize_name(name):
+    """Normalize a name for matching: strip, collapse spaces, uppercase, remove punctuation."""
+    if not name:
+        return ''
+    import re
+    name = str(name).strip()
+    name = re.sub(r'[^\w\s]', ' ', name)  # Replace punctuation with space
+    name = ' '.join(name.split())          # Collapse multiple spaces
+    return name.upper()
+
+
+def fuzzy_score(name_a, name_b):
+    """Simple fuzzy match score between two normalized names (0-100)."""
+    if not name_a or not name_b:
+        return 0
+    na = normalize_name(name_a)
+    nb = normalize_name(name_b)
+    if na == nb:
+        return 100
+    # Check if one contains the other
+    if na in nb or nb in na:
+        return 90
+    # Token overlap
+    tokens_a = set(na.split())
+    tokens_b = set(nb.split())
+    if not tokens_a or not tokens_b:
+        return 0
+    overlap = tokens_a & tokens_b
+    score = int((len(overlap) / max(len(tokens_a), len(tokens_b))) * 80)
+    return max(0, min(score, 99))
+
+
+def find_best_employee_match(emp_no, emp_name, emp_email, db):
+    """
+    Find best matching Employee record.
+    Priority:
+      1. Employee Number match
+      2. Alias Match (persistent alias mapping)
+      3. Exact Normalized Name Match
+      4. Email match
+      5. Fuzzy Name Match (for admin review)
+    Returns (employee, is_exact_match, suggested_name)
+    """
+    from app.models.employee import Employee
+    from app.models.employee_alias import EmployeeAlias
+
+    # 1. Employee Number match
+    if emp_no:
+        emp = db.query(Employee).filter(Employee.employee_number == emp_no).first()
+        if emp:
+            return emp, True, None
+
+    if not emp_name:
+        return None, False, None
+
+    norm_name = normalize_name(emp_name)
+    
+    # 2. Alias Match (persistent alias mapping)
+    alias = db.query(EmployeeAlias).filter(
+        EmployeeAlias.alias_name == emp_name.strip()
+    ).first()
+    if alias:
+        emp = db.query(Employee).filter(Employee.id == alias.employee_id).first()
+        if emp:
+            return emp, True, None
+    
+    # Also check normalized alias match
+    if not alias:
+        all_aliases = db.query(EmployeeAlias).all()
+        for a in all_aliases:
+            if normalize_name(a.alias_name) == norm_name:
+                emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+                if emp:
+                    return emp, True, None
+
+    all_emps = db.query(Employee).all()
+
+    # Build normalized name lookup
+    best_match = None
+    best_score = 0
+    for e in all_emps:
+        e_norm = normalize_name(e.name or '')
+        # 3. Exact normalized match
+        if e_norm == norm_name:
+            return e, True, None
+        # 5. Track fuzzy score for suggestion
+        score = fuzzy_score(e.name, emp_name)
+        if score > best_score:
+            best_score = score
+            best_match = e
+
+    # 4. Email match
+    if emp_email:
+        emp = db.query(Employee).filter(Employee.email == emp_email).first()
+        if emp:
+            return emp, True, None
+
+    # Return best fuzzy match (if confidence > 50, suggest for review)
+    if best_match and best_score >= 50:
+        return None, False, best_match.name
+
+    return None, False, None
+
+
+def parse_date_joined(val):
+    """Parse date_joined from various formats: YYYY-MM-DD, Month DD, YYYY, DD-Mon-YY, etc."""
+    import pandas as pd
+    if val is None or (hasattr(val, 'isna') and val.isna()) or val is pd.NaT:
         return None
+    # Handle pandas Timestamp natively
+    if isinstance(val, pd.Timestamp):
+        return val.date()
+    # Handle datetime objects
+    if hasattr(val, 'date'):
+        return val.date()
+    # Handle string
+    s = str(val).strip()
+    if not s or s.lower() in ('nan', 'none', 'nat', ''):
+        return None
+    s = s.replace(',', '')
+    # Remove trailing time component like '00:00:00'
+    if ' ' in s:
+        parts = s.split()
+        # If second part looks like HH:MM:SS, keep only date part
+        if len(parts) == 2 and parts[1].replace(':', '').isdigit():
+            s = parts[0]
     from datetime import datetime as dt
-    date_str = str(date_str).strip()
     formats = [
         "%Y-%m-%d",
-        "%B %d, %Y",
+        "%Y/%m/%d",
         "%B %d %Y",
-        "%b %d, %Y",
         "%b %d %Y",
+        "%d %B %Y",
+        "%d %b %Y",
         "%d/%m/%Y",
         "%m/%d/%Y",
         "%d-%m-%Y",
         "%m-%d-%Y",
+        "%d-%b-%Y",
+        "%d-%b-%y",
+        "%d/%b/%Y",
+        "%d/%b/%y",
+        "%Y%m%d",
     ]
     for fmt in formats:
         try:
-            return dt.strptime(date_str, fmt).date()
+            return dt.strptime(s, fmt).date()
         except ValueError:
             continue
+    # Try Excel serial date number
+    try:
+        from datetime import timedelta
+        serial = float(s)
+        if 40000 < serial < 60000:
+            return dt(1899, 12, 30).date() + timedelta(days=int(serial))
+    except (ValueError, TypeError):
+        pass
     return None
 
 
@@ -1246,7 +1416,6 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         "future_savings": float(payroll.future_savings or 0),
         "other_deductions": float(payroll.other_deductions or 0),
         "ssnit_deduction": float(payroll.ssnit_deduction or 0),
-        "employee_pf": float(payroll.employee_pf or 0),
         "pf_eight_percent": float(payroll.pf_eight_percent or 0),
         "total_deductions": float(payroll.total_deductions or 0),
         "net_salary": float(payroll.net_salary or 0),
@@ -2025,7 +2194,7 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
             for r in records:
                 ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.basic_salary, r.meals_monthly, r.responsibility_allowance,
                           r.cola, r.leave_allowance, r.total_earnings, r.ssnit_deduction, r.paye, r.tithe, r.future_savings,
-                          r.employee_pf, r.other_deductions, r.total_deductions, r.net_salary])
+                          r.pf_eight_percent, r.other_deductions, r.total_deductions, r.net_salary])
         elif report_type == "employee_list":
             employees = db.query(Employee).order_by(Employee.name).all()
             headers = ["Name", "Email", "Employee Number", "Designation", "Location", "Bank", "Bank Number"]
@@ -2036,7 +2205,7 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
             headers = ["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"]
             ws.append(headers)
             for r in records:
-                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.employee_pf, r.other_deductions, r.total_deductions])
+                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             headers = ["Employee", "Bank", "Bank Number", "Net Salary", "Month"]
             ws.append(headers)
@@ -2073,7 +2242,7 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
         elif report_type == "deductions":
             writer.writerow(["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"])
             for r in records:
-                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.employee_pf, r.other_deductions, r.total_deductions])
+                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             writer.writerow(["Employee", "Bank", "Bank Number", "Net Salary", "Month"])
             for r in records:
@@ -2122,8 +2291,155 @@ async def month_summary(request: Request, month: str = "", db: Session = Depends
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# === EMPLOYEE ALIAS MANAGEMENT ===
+@app.get("/aliases", response_class=HTMLResponse)
+async def alias_management_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.employee_alias import EmployeeAlias
+    from app.models.employee import Employee
+    aliases = db.query(EmployeeAlias).order_by(EmployeeAlias.alias_name).all()
+    alias_list = []
+    for a in aliases:
+        emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+        alias_list.append({
+            'id': a.id,
+            'alias_name': a.alias_name,
+            'employee_name': emp.name if emp else 'Unknown',
+            'employee_number': emp.employee_number if emp else '',
+            'created_at': a.created_at
+        })
+    template = templates.get_template("aliases.html")
+    rendered = template.render({"user": current_user, "aliases": alias_list, "request": request})
+    return HTMLResponse(content=rendered, media_type="text/html")
+
+
+@app.post("/aliases/add")
+async def add_alias(request: Request, alias_name: str = Form(...), employee_id: int = Form(...), db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.employee_alias import EmployeeAlias
+    existing = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == alias_name.strip()).first()
+    if existing:
+        return RedirectResponse(url="/aliases?error=Alias+already+exists", status_code=303)
+    alias = EmployeeAlias(employee_id=employee_id, alias_name=alias_name.strip(), created_by=current_user.id)
+    db.add(alias)
+    db.commit()
+    return RedirectResponse(url="/aliases?message=Alias+created", status_code=303)
+
+
+@app.post("/aliases/delete/{alias_id}")
+async def delete_alias(alias_id: int, request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.employee_alias import EmployeeAlias
+    alias = db.query(EmployeeAlias).filter(EmployeeAlias.id == alias_id).first()
+    if alias:
+        db.delete(alias)
+        db.commit()
+    return RedirectResponse(url="/aliases?message=Alias+deleted", status_code=303)
+
+
+@app.get("/aliases/search-employees")
+async def search_employees_for_alias(q: str = "", db: Session = Depends(get_db)):
+    from app.models.employee import Employee
+    if not q:
+        return JSONResponse([])
+    emps = db.query(Employee).filter(
+        Employee.name.ilike(f"%{q}%")
+    ).limit(20).all()
+    return JSONResponse([{"id": e.id, "name": e.name, "employee_number": e.employee_number} for e in emps])
+
+
+@app.post("/upload/resolve-mismatches")
+async def resolve_mismatches(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.employee_alias import EmployeeAlias
+    from app.models.upload_mismatch import UploadMismatch
+    from app.models.employee import Employee
+    
+    form = await request.form()
+    mismatches_raw = form.get("mismatch_data", "[]")
+    import json
+    mismatches = json.loads(mismatches_raw)
+    
+    for m in mismatches:
+        alias_name = m.get("alias_name", "").strip()
+        employee_id = m.get("employee_id")
+        mismatch_id = m.get("mismatch_id")
+        
+        if not alias_name or not employee_id:
+            continue
+        
+        # Check if alias already exists
+        existing = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == alias_name).first()
+        if not existing:
+            alias = EmployeeAlias(
+                employee_id=int(employee_id),
+                alias_name=alias_name,
+                created_by=current_user.id
+            )
+            db.add(alias)
+        
+        # Delete mismatch record
+        if mismatch_id:
+            mm = db.query(UploadMismatch).filter(UploadMismatch.id == int(mismatch_id)).first()
+            if mm:
+                db.delete(mm)
+    
+    db.commit()
+    return JSONResponse({"success": True, "message": "Mismatches resolved. Aliases saved for future uploads."})
+
+
 # === UPLOAD HISTORY ===
 @app.get("/reports/history", response_class=HTMLResponse)
+@app.get("/upload-history/{upload_id}/mismatches")
+async def upload_mismatches_page(upload_id: int, request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.upload_mismatch import UploadMismatch
+    mismatches = db.query(UploadMismatch).filter(UploadMismatch.upload_id == upload_id).all()
+    upload = db.query(UploadHistory).filter(UploadHistory.id == upload_id).first()
+    template = templates.get_template("upload_history.html")
+    rendered = template.render({
+        "user": current_user,
+        "mismatches": mismatches,
+        "upload": upload
+    })
+    return HTMLResponse(content=rendered, media_type="text/html")
+
+
+@app.get("/upload-history/{upload_id}/mismatches/download")
+async def download_mismatches_csv(upload_id: int, request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.upload_mismatch import UploadMismatch
+    import csv, io
+    mismatches = db.query(UploadMismatch).filter(UploadMismatch.upload_id == upload_id).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Employee Name', 'Employee Number', 'Email', 'Payroll Type', 'Month', 'Reason', 'Suggested Match'])
+    for m in mismatches:
+        writer.writerow([m.employee_name, m.employee_number, m.email, m.payroll_type, m.month, m.reason, m.suggested_match or ''])
+    upload = db.query(UploadHistory).filter(UploadHistory.id == upload_id).first()
+    filename = f"mismatches_{upload_id}.csv"
+    return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+@app.get("/upload-history", response_class=HTMLResponse)
 async def upload_history_page(request: Request, db: Session = Depends(get_db)):
     try:
         current_user = get_current_user_web(request, db)
@@ -2193,7 +2509,9 @@ async def upload_history_page(request: Request, db: Session = Depends(get_db)):
                         "timestamp": ts,
                         "total_employees": getattr(u, 'total_employees', 0) or 0,
                         "imported_count": getattr(u, 'imported_count', 0) or 0,
-                        "skipped_count": getattr(u, 'skipped_count', 0) or 0
+                        "skipped_count": getattr(u, 'skipped_count', 0) or 0,
+                        "unmatched_count": getattr(u, 'unmatched_count', 0) or 0,
+                        "payroll_type": getattr(u, 'payroll_type', '') or ''
                     })
             
             set_cache(cache_key, uploads_list, ttl_seconds=120)
