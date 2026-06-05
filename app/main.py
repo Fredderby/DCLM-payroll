@@ -633,6 +633,7 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         template = templates.get_template("upload.html")
         rendered = template.render({
             "user": current_user,
+            "request": request,
             "message": msg,
             "errors": errors[:5],
             "unmatched_records": unmatched_with_ids,
