@@ -569,6 +569,9 @@
       if(d.ssnit_deduction && parseFloat(d.ssnit_deduction) > 0){
         h+=row('SSNIT 5.5%',undefined,d.ssnit_deduction);
       }
+      if(d.pf_eight_percent && parseFloat(d.pf_eight_percent) > 0){
+        h+=row('PF 8%',undefined,d.pf_eight_percent);
+      }
       h+=row('PAYE Tax',undefined,d.paye);
       h+=row('10% Tithe',undefined,d.tithe);
       h+=row('Future Savings',undefined,d.future_savings);
