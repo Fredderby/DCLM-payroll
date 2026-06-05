@@ -36,25 +36,23 @@ print('Database tables verified successfully.')
 
 # 4. Run schema migrations for new columns
 echo "Running schema migrations..."
-python -c "
+python << 'PYEOF'
 from app.core.database import engine
 import sqlalchemy as sa
 
 migrations = [
-    (\"staff_category\", \"ALTER TABLE payroll_records ADD COLUMN staff_category VARCHAR(20) DEFAULT 'pastoral'\"),
-    (\"rent_monthly\", \"ALTER TABLE payroll_records ADD COLUMN rent_monthly FLOAT DEFAULT 0\"),
-    (\"utility_monthly\", \"ALTER TABLE payroll_records ADD COLUMN utility_monthly FLOAT DEFAULT 0\"),
-    (\"transport_monthly\", \"ALTER TABLE payroll_records ADD COLUMN transport_monthly FLOAT DEFAULT 0\"),
-    (\"pf_eight_percent\", \"ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0\"),
-    (\"ssnit_deduction\", \"ALTER TABLE payroll_records ADD COLUMN ssnit_deduction FLOAT DEFAULT 0\"),
-    (\"pf_eight_percent\", \"ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0\"),
+    ("staff_category", "ALTER TABLE payroll_records ADD COLUMN staff_category VARCHAR(20) DEFAULT 'pastoral'"),
+    ("rent_monthly", "ALTER TABLE payroll_records ADD COLUMN rent_monthly FLOAT DEFAULT 0"),
+    ("utility_monthly", "ALTER TABLE payroll_records ADD COLUMN utility_monthly FLOAT DEFAULT 0"),
+    ("transport_monthly", "ALTER TABLE payroll_records ADD COLUMN transport_monthly FLOAT DEFAULT 0"),
+    ("pf_eight_percent", "ALTER TABLE payroll_records ADD COLUMN pf_eight_percent FLOAT DEFAULT 0"),
+    ("ssnit_deduction", "ALTER TABLE payroll_records ADD COLUMN ssnit_deduction FLOAT DEFAULT 0"),
 ]
 
 with engine.connect() as conn:
-    # Check existing columns
     result = conn.execute(sa.text('SHOW COLUMNS FROM payroll_records'))
     existing = [row[0] for row in result]
-    
+
     for col_name, alter_sql in migrations:
         if col_name not in existing:
             try:
@@ -67,7 +65,6 @@ with engine.connect() as conn:
         else:
             print(f'  ✓ Column exists: {col_name}')
 
-# Migrate upload_history table for new tracking columns
 print("Running upload_history migrations...")
 upload_migrations = [
     ("total_employees", "ALTER TABLE upload_history ADD COLUMN total_employees INTEGER DEFAULT 0"),
@@ -78,7 +75,6 @@ upload_migrations = [
     ("unmatched_count", "ALTER TABLE upload_history ADD COLUMN unmatched_count INTEGER DEFAULT 0"),
 ]
 
-# Create upload_mismatches table if not exists
 print("Creating upload_mismatches table...")
 try:
     from app.models.upload_mismatch import UploadMismatch
@@ -90,7 +86,7 @@ except Exception as e:
 try:
     result = conn.execute(sa.text('SHOW COLUMNS FROM upload_history'))
     upload_existing = [row[0] for row in result]
-    
+
     for col_name, alter_sql in upload_migrations:
         if col_name not in upload_existing:
             try:
@@ -104,7 +100,11 @@ try:
             print(f'  ✓ Column exists: {col_name} in upload_history')
 except Exception as e:
     print(f'  - Could not inspect upload_history: {e}')
-" 2>&1 || echo "WARNING: Migration partially failed. Some columns may not have been added."
+PYEOF
+PYEXIT=$?
+if [ $PYEXIT -ne 0 ]; then
+    echo "WARNING: Migration script exited with code $PYEXIT. Some columns may not have been added."
+fi
 
 echo "=== Pre-start complete. Starting application... ==="
 
