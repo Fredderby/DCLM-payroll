@@ -366,7 +366,7 @@ async def download_payroll_template(request: Request):
     return await download_pastoral_template(request)
 
 @app.post("/upload")
-async def upload_payroll(request: Request, file: UploadFile = File(...), month: str = Form(...), db: Session = Depends(get_db)):
+async def upload_payroll(request: Request, file: UploadFile = File(...), month: str = Form(...), staff_category: str = Form(default=""), db: Session = Depends(get_db)):
     try:
         current_user = get_current_user_web(request, db)
     except HTTPException:
@@ -441,16 +441,18 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
         errors = []
         unmatched_records = []  # Names that didn't match any registered employee
         upload_mismatch_entries = []  # For storing in upload_mismatches table
-        staff_category_detected = None
+        # Use user-selected staff category, fallback to auto-detected from file
+        staff_category_detected = staff_category if staff_category else None
 
-        logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}'")
+        logger.info(f"UPLOAD PROCESSING: {len(records)} records extracted from file '{original_filename}' for month '{month}' by user '{current_user.email}', staff_category='{staff_category_detected or 'auto'}")
 
         for record in records:
             try:
                 emp_no = str(record.get('employee_number', '') or '').strip()
                 emp_email = str(record.get('email', '') or '').strip()
                 emp_name = str(record.get('employee_name', '') or '').strip()
-                staff_category = record.get('staff_category', 'pastoral')
+                # Use user-selected category if provided, otherwise use file auto-detect
+                staff_category = staff_category_detected or record.get('staff_category', 'pastoral')
                 if not staff_category_detected:
                     staff_category_detected = staff_category
 

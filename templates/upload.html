@@ -115,6 +115,16 @@ function downloadUnmatchedCSV() {
             </div>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">Staff Category</label>
+            <select name="staff_category" class="form-control" required>
+              <option value="">-- Select Category --</option>
+              <option value="pastoral">Pastoral</option>
+              <option value="non_pastoral">Non-Pastoral</option>
+            </select>
+            <small class="text-muted" style="font-size: 11px;">Select the correct staff category for this upload file.</small>
+          </div>
+
           <button type="submit" class="btn btn-primary btn-lg" id="uploadBtn">
             <i class="fas fa-upload"></i> Upload & Process
           </button>
