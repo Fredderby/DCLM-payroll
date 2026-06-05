@@ -1036,7 +1036,7 @@ def parse_date_joined(val):
 @app.post("/staff/add")
 @app.post("/staff/create")
 async def add_staff(request: Request, employee_number: str = Form(...), name: str = Form(...), 
-                   email: str = Form(...), function: str = Form(default=""),
+                   email: str = Form(default=""), function: str = Form(default=""),
                    designation: str = Form(default=""), location: str = Form(default=""),
                    ssnit_number: str = Form(default=""),
                    bank_number: str = Form(default=""),

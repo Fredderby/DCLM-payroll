@@ -327,6 +327,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         rows.append([Paragraph("PAYE", tl), v(None), v(payroll.paye)])
         rows.append([Paragraph("10% Tithe", tl), v(None), v(payroll.tithe)])
         rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
+        rows.append([Paragraph("PF 8%", tl), v(None), v(payroll.pf_eight_percent)])
         rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
     else:
         # Non-Pastoral earnings (all shown unconditionally to match preview)
@@ -346,6 +347,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         rows.append([Paragraph("PAYE", tl), v(None), v(payroll.paye)])
         rows.append([Paragraph("10% Tithe", tl), v(None), v(payroll.tithe)])
         rows.append([Paragraph("Future Savings", tl), v(None), v(payroll.future_savings)])
+        rows.append([Paragraph("PF 8%", tl), v(None), v(payroll.pf_eight_percent)])
         rows.append([Paragraph("SSNIT 5.5%", tl), v(None), v(payroll.ssnit_deduction)])
         if float(payroll.other_deductions or 0) > 0:
             rows.append([Paragraph("Other Deductions", tl), v(None), v(payroll.other_deductions)])
