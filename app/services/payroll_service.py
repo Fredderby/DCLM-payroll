@@ -35,6 +35,26 @@ def calculate_payroll_totals(earnings_dict, deductions_dict):
     return total_earnings, total_deductions, net_salary
 
 
+def _clean(val, default=0):
+    """Convert NaN/None/inf to default value for MySQL compatibility"""
+    import math
+    if val is None:
+        return default
+    if isinstance(val, float):
+        if math.isnan(val) or math.isinf(val):
+            return default
+        return val
+    if isinstance(val, str) and val.lower() in ('nan', 'none', 'nat', ''):
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
+
 def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
     """Create a comprehensive payroll record"""
     # Use employee object directly (already looked up by caller)
@@ -42,27 +62,27 @@ def create_payroll_record(db: Session, employee: Employee, payroll_data: dict):
     staff_category = payroll_data.get('staff_category', 'pastoral')
 
     earnings = {
-        'basic_salary': payroll_data.get('basic_salary', 0),
-        'meals_monthly': payroll_data.get('meals_monthly', 0),
-        'responsibility_allowance': payroll_data.get('responsibility_allowance', 0),
-        'cola': payroll_data.get('cola', 0),
-        'leave_allowance': payroll_data.get('leave_allowance', 0),
-        'other_earnings': payroll_data.get('other_earnings', 0),
-        'rent_monthly': payroll_data.get('rent_monthly', 0),
-        'utility_monthly': payroll_data.get('utility_monthly', 0),
-        'transport_monthly': payroll_data.get('transport_monthly', 0),
+        'basic_salary': _clean(payroll_data.get('basic_salary')),
+        'meals_monthly': _clean(payroll_data.get('meals_monthly')),
+        'responsibility_allowance': _clean(payroll_data.get('responsibility_allowance')),
+        'cola': _clean(payroll_data.get('cola')),
+        'leave_allowance': _clean(payroll_data.get('leave_allowance')),
+        'other_earnings': _clean(payroll_data.get('other_earnings')),
+        'rent_monthly': _clean(payroll_data.get('rent_monthly')),
+        'utility_monthly': _clean(payroll_data.get('utility_monthly')),
+        'transport_monthly': _clean(payroll_data.get('transport_monthly')),
     }
 
-    ssnit_val = payroll_data.get('ssnit_deduction', 0) or 0
-    pf_eight = payroll_data.get('pf_eight_percent', 0) or 0
+    ssnit_val = _clean(payroll_data.get('ssnit_deduction'))
+    pf_eight = _clean(payroll_data.get('pf_eight_percent'))
 
     deductions = {
-        'paye': payroll_data.get('paye', 0),
-        'tithe': payroll_data.get('tithe', 0),
-        'future_savings': payroll_data.get('future_savings', 0),
-        'other_deductions': payroll_data.get('other_deductions', 0),
-        'ssnit_deduction': ssnit_val,              # SSNIT 5.5% - primary deduction for new uploads
-        'pf_eight_percent': pf_eight,              # PF 8% - the active PF 8% field (used once)
+        'paye': _clean(payroll_data.get('paye')),
+        'tithe': _clean(payroll_data.get('tithe')),
+        'future_savings': _clean(payroll_data.get('future_savings')),
+        'other_deductions': _clean(payroll_data.get('other_deductions')),
+        'ssnit_deduction': ssnit_val,
+        'pf_eight_percent': pf_eight,
     }
 
     total_earnings, total_deductions, net_salary = calculate_payroll_totals(earnings, deductions)
