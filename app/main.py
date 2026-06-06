@@ -460,43 +460,82 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                 employee, is_exact, suggested_name = find_best_employee_match(emp_no, emp_name, emp_email, db)
 
                 if not employee:
-                    # Determine reason
-                    reason = 'Employee not registered'
-                    if emp_no and not emp_name:
-                        reason = 'Missing employee name'
-                    elif emp_no and emp_email and not is_exact:
-                        reason = 'Name mismatch'
-                    elif not emp_no and not emp_email:
-                        reason = 'Missing employee number and name mismatch'
-                    else:
-                        reason = 'Employee not registered'
+                    # For unmatched employees, try to create a new Employee record from the file data
+                    first_name = ''
+                    last_name = ''
+                    if emp_name:
+                        name_parts = emp_name.strip().split(None, 1)
+                        first_name = name_parts[0] if name_parts else ''
+                        last_name = name_parts[1] if len(name_parts) > 1 else ''
                     
-                    unmatched_records.append({
-                        'name': emp_name or emp_no or 'Unknown',
-                        'number': emp_no,
-                        'email': emp_email,
-                        'reason': reason,
-                        'suggested': suggested_name
-                    })
-                    upload_mismatch_entries.append({
-                        'employee_name': emp_name or emp_no or 'Unknown',
-                        'employee_number': emp_no or '',
-                        'email': emp_email or '',
-                        'payroll_type': staff_category,
-                        'month': month,
-                        'reason': reason,
-                        'suggested_match': suggested_name
-                    })
-                    
-                    # Still create payroll record for unmatched employees using raw file data
                     try:
-                        payroll_record = create_payroll_record(db, None, record)
-                        db.commit()
-                        processed += 1
-                        continue
-                    except Exception as e:
-                        db.rollback()
-                        errors.append(f"Error creating payroll for unmatched {emp_name}: {str(e)[:80]}")
+                        from app.services.pdf_service import parse_bank_account
+                        bank_number = ''
+                        bank_name = ''
+                        bank_branch = ''
+                        if record.get('bank_account'):
+                            bank_number, bank_name, bank_branch = parse_bank_account(str(record.get('bank_account', '')))
+                        
+                        new_employee = Employee(
+                            employee_number=emp_no,
+                            name=emp_name,
+                            email=emp_email,
+                            function=str(record.get('function', '') or '').strip(),
+                            designation=str(record.get('designation', '') or '').strip(),
+                            location=str(record.get('location', '') or '').strip(),
+                            ssnit_number=str(record.get('ssnit_number', '') or '').strip(),
+                            bank_number=bank_number,
+                            bank_name=bank_name,
+                            bank_branch=bank_branch
+                        )
+                        dj_val = record.get('date_joined', None)
+                        if dj_val is not None:
+                            parsed_dj = parse_date_joined(dj_val)
+                            if parsed_dj:
+                                new_employee.date_joined = parsed_dj
+                        
+                        db.add(new_employee)
+                        db.flush()
+                        employee = new_employee
+                        logger.info(f"Created new employee record for '{emp_name}' ({emp_no})")
+                    except Exception as emp_error:
+                        logger.error(f"Failed to create employee for unmatched {emp_name}: {str(emp_error)[:80]}")
+                        # Determine reason
+                        reason = 'Employee not registered'
+                        if emp_no and not emp_name:
+                            reason = 'Missing employee name'
+                        elif emp_no and emp_email and not is_exact:
+                            reason = 'Name mismatch'
+                        elif not emp_no and not emp_email:
+                            reason = 'Missing employee number and name mismatch'
+                        else:
+                            reason = 'Employee not registered'
+                        
+                        unmatched_records.append({
+                            'name': emp_name or emp_no or 'Unknown',
+                            'number': emp_no,
+                            'email': emp_email,
+                            'reason': reason,
+                            'suggested': suggested_name
+                        })
+                        upload_mismatch_entries.append({
+                            'employee_name': emp_name or emp_no or 'Unknown',
+                            'employee_number': emp_no or '',
+                            'email': emp_email or '',
+                            'payroll_type': staff_category,
+                            'month': month,
+                            'reason': reason,
+                            'suggested_match': suggested_name
+                        })
+                        
+                        # Still create payroll record with None employee
+                        try:
+                            payroll_record = create_payroll_record(db, None, record)
+                            db.commit()
+                            processed += 1
+                        except Exception as e2:
+                            db.rollback()
+                            errors.append(f"Error creating payroll for unmatched {emp_name}: {str(e2)[:80]}")
                         continue
                 else:
                     # --- Matched employee processing ---
@@ -977,8 +1016,12 @@ def find_best_employee_match(emp_no, emp_name, emp_email, db):
         if emp:
             return emp, True, None
 
-    # Return best fuzzy match (if confidence > 50, suggest for review)
+    # Return best fuzzy match
+    if best_match and best_score >= 80:
+        # High confidence - auto match
+        return best_match, True, None
     if best_match and best_score >= 50:
+        # Medium confidence - suggest for review
         return None, False, best_match.name
 
     return None, False, None
