@@ -1569,6 +1569,21 @@ async def send_payslip_email(payroll_id: int, request: Request, db: Session = De
             return await send_payslip_redirect(request, "Payslip not found.", "error")
         
         employee = db.query(Employee).filter(Employee.name == payroll.employee_name).first()
+        if not employee:
+            # Try alias lookup
+            from app.models.employee_alias import EmployeeAlias
+            rec_name = (payroll.employee_name or '').strip()
+            rec_name_norm = ' '.join(rec_name.split()).upper()
+            alias = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == rec_name).first()
+            if not alias:
+                all_aliases = db.query(EmployeeAlias).all()
+                for a in all_aliases:
+                    alias_norm = ' '.join((a.alias_name or '').split()).upper()
+                    if alias_norm == rec_name_norm:
+                        alias = a
+                        break
+            if alias:
+                employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
         if not employee or not employee.email:
             return await send_payslip_redirect(request, "Employee email not configured.", "error")
         
@@ -2665,22 +2680,33 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
     if not record:
         return JSONResponse(content={"success": False, "error": "Payslip not found"}, status_code=404)
 
-    # Robust employee matching
+    # Robust employee matching with alias support
+    from app.models.employee_alias import EmployeeAlias
     emp = db.query(Employee).filter(Employee.name == record.employee_name).first()
     if not emp:
-        # Try case-insensitive match
+        # Try case-insensitive / whitespace-normalized match
         all_emps = db.query(Employee).all()
+        rec_name_norm = ' '.join((record.employee_name or '').split()).upper()
         for e in all_emps:
-            if (e.name or '').upper() == (record.employee_name or '').upper():
+            emp_name_norm = ' '.join((e.name or '').split()).upper()
+            if emp_name_norm == rec_name_norm:
                 emp = e
                 break
     if not emp:
-        # Try whitespace-normalized match
-        rec_name_norm = ' '.join((record.employee_name or '').split()).upper()
-        for e in all_emps:
-            if ' '.join((e.name or '').split()).upper() == rec_name_norm:
-                emp = e
-                break
+        # Try alias lookup
+        rec_name_stripped = (record.employee_name or '').strip()
+        rec_name_upper = rec_name_stripped.upper()
+        alias = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == rec_name_stripped).first()
+        if not alias:
+            # Try normalized alias match
+            all_aliases = db.query(EmployeeAlias).all()
+            for a in all_aliases:
+                alias_norm = ' '.join((a.alias_name or '').split()).upper()
+                if alias_norm == rec_name_norm:
+                    alias = a
+                    break
+        if alias:
+            emp = db.query(Employee).filter(Employee.id == alias.employee_id).first()
     if not emp:
         return JSONResponse(content={"success": False, "error": "Employee not found"}, status_code=404)
 

@@ -108,12 +108,27 @@ Head of Finance"""
         """Send payslips to all employees for a specific month"""
         from app.models.email_log import EmailLog
         from app.models.employee import Employee
+        from app.models.employee_alias import EmployeeAlias
         from datetime import datetime
 
         results = {"successful": 0, "failed": 0, "errors": []}
 
         for payroll in payroll_records:
             emp = db_session.query(Employee).filter(Employee.name == payroll.employee_name).first()
+            if not emp:
+                # Try alias lookup
+                rec_name = (payroll.employee_name or '').strip()
+                rec_name_norm = ' '.join(rec_name.split()).upper()
+                alias = db_session.query(EmployeeAlias).filter(EmployeeAlias.alias_name == rec_name).first()
+                if not alias:
+                    all_aliases = db_session.query(EmployeeAlias).all()
+                    for a in all_aliases:
+                        alias_norm = ' '.join((a.alias_name or '').split()).upper()
+                        if alias_norm == rec_name_norm:
+                            alias = a
+                            break
+                if alias:
+                    emp = db_session.query(Employee).filter(Employee.id == alias.employee_id).first()
             employee_name = emp.name if emp and emp.name else (payroll.employee_name or "Unknown")
             if not emp or not emp.email:
                 results["failed"] += 1
