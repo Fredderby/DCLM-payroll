@@ -2726,7 +2726,7 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
 
     # Send email
     try:
-        success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month)
+        success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month, record.net_salary)
         if success:
             return JSONResponse(content={"success": True, "message": "Payslip sent to " + emp.email})
         else:
@@ -2809,7 +2809,7 @@ async def resend_payslip(request: Request, log_id: int, db: Session = Depends(ge
         return JSONResponse(content={"success": False, "error": "Failed to generate PDF"})
 
     # Send email
-    success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month)
+    success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month, record.net_salary)
 
     # Update log entry
     log_entry.status = "sent" if success else "failed"

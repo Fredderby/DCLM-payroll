@@ -166,6 +166,21 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
 
     employee = db.query(Employee).filter(Employee.name == payroll.employee_name).first()
     if not employee:
+        # Try alias lookup
+        rec_name = (payroll.employee_name or '').strip()
+        rec_name_norm = ' '.join(rec_name.split()).upper()
+        from app.models.employee_alias import EmployeeAlias
+        alias = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == rec_name).first()
+        if not alias:
+            all_aliases = db.query(EmployeeAlias).all()
+            for a in all_aliases:
+                alias_norm = ' '.join((a.alias_name or '').split()).upper()
+                if alias_norm == rec_name_norm:
+                    alias = a
+                    break
+        if alias:
+            employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
+    if not employee:
         class PlaceholderEmployee:
             def __init__(self, name):
                 self.name = name
