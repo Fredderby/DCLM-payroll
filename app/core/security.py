@@ -61,7 +61,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_user_web(request: Request, db: Session = Depends(get_db)):
-    """Get current user from cookie for web routes"""
+    """Get current user from cookie for web routes with auto-refresh support"""
     token = request.cookies.get("access_token")
     # Fallback: allow Authorization header Bearer token for API clients
     if not token:
@@ -71,20 +71,34 @@ def get_current_user_web(request: Request, db: Session = Depends(get_db)):
         else:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Normalize token: strip surrounding quotes/whitespace and optional "Bearer " prefix
+    # Normalize token
     if isinstance(token, str):
-        token = token.strip().strip('"').strip("'")
+        token = token.strip().strip('"').strip("\'")
         if token.startswith("Bearer "):
             token = token[7:]
 
     payload = verify_token(token)
+    # If access token expired, try refresh token
     if payload is None:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
+        refresh_token = request.cookies.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="Session expired. Please login again.")
+        refresh_token = refresh_token.strip().strip('"').strip("\'")
+        refresh_payload = verify_token(refresh_token)
+        if refresh_payload is None:
+            raise HTTPException(status_code=401, detail="Session expired. Please login again.")
+        email: str = refresh_payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Session expired. Please login again.")
+        user = db.query(User).filter(User.email == email).first()
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+
     email: str = payload.get("sub")
     if email is None:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
+
     user = db.query(User).filter(User.email == email).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")

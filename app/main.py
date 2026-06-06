@@ -92,14 +92,16 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    from app.core.security import verify_password, create_access_token
+    from app.core.security import verify_password, create_access_token, create_refresh_token
     user = db.query(User).filter(User.email == email).first()
     if user and verify_password(password, user.hashed_password):
-        # Create JWT token and set in cookie
+        # Create JWT tokens
         access_token = create_access_token(data={"sub": user.email})
-        # Force fresh load after login to reinitialize all components
+        refresh_token = create_refresh_token(data={"sub": user.email})
+        # Set both tokens in cookies with 7-day session
         response = RedirectResponse(url="/dashboard?_fresh=true", status_code=303)
-        response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True)
+        response.set_cookie(key="access_token", value=f"Bearer {access_token}", httponly=True, max_age=86400*7, secure=False, samesite="lax")
+        response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, max_age=86400*7, secure=False, samesite="lax")
         return response
     template = templates.get_template("login.html")
     rendered = template.render({"error": "Invalid credentials", "active_tab": "login"})
@@ -920,16 +922,20 @@ async def upload_employees(request: Request, file: UploadFile = File(...), db: S
         return HTMLResponse(content=template.render({"user": current_user, "employees": employees, "error": f"Upload failed: {str(e)}"}), media_type="text/html")
 
 def normalize_name(name):
-    """Normalize a name for matching: strip, collapse spaces, uppercase, remove punctuation."""
+    """Normalize a name for matching: strip titles, punctuation, collapse spaces, uppercase."""
     if not name:
         return ''
     import re
     name = str(name).strip()
-    name = re.sub(r'[^\w\s]', ' ', name)  # Replace punctuation with space
-    name = ' '.join(name.split())          # Collapse multiple spaces
-    return name.upper()
-
-
+    # Remove punctuation first so titles like 'Rev.' become 'Rev'
+    name = re.sub(r'[^\w\s]', ' ', name)
+    name = ' '.join(name.split())
+    name = name.upper()
+    # Remove common honorific titles (case-insensitive, applied after punctuation is gone)
+    titles = r'^(REV|PASTOR|APOSTLE|DR|PROF|EVANGELIST|ELDER|DEACON|BISHOP|CANON|FR|BR|SR|MR|MRS|MS|MISS|HON|RT\s*REV|VEN|MOST\s*REV|SIR|LADY|CHIEF|PASTORAL|ENGR|DCLM|PROPHET)\s+'
+    name = re.sub(titles, '', name, flags=re.IGNORECASE).strip()
+    name = ' '.join(name.split())
+    return name
 def fuzzy_score(name_a, name_b):
     """Simple fuzzy match score between two normalized names (0-100)."""
     if not name_a or not name_b:
@@ -941,11 +947,13 @@ def fuzzy_score(name_a, name_b):
     # Check if one contains the other
     if na in nb or nb in na:
         return 90
-    # Token overlap
+    # Token overlap (same tokens in different order = reordered name)
     tokens_a = set(na.split())
     tokens_b = set(nb.split())
     if not tokens_a or not tokens_b:
         return 0
+    if tokens_a == tokens_b:
+        return 95
     overlap = tokens_a & tokens_b
     score = int((len(overlap) / max(len(tokens_a), len(tokens_b))) * 80)
     return max(0, min(score, 99))
