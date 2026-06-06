@@ -556,12 +556,17 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                             existing_payroll.pdf_generated = None
                         db.commit()
                     else:
-                        employee.email = record.get('email', employee.email)
-                        employee.function = record.get('function', employee.function)
-                        employee.designation = record.get('designation', employee.designation)
-                        employee.location = record.get('location', employee.location)
-                        employee.bank_account = record.get('bank_account', getattr(employee, 'bank_account', ''))
-                        employee.ssnit_number = record.get('ssnit_number', getattr(employee, 'ssnit_number', ''))
+                        if record.get('email'): employee.email = str(record['email']).strip()
+                        if record.get('function'): employee.function = str(record['function']).strip()
+                        if record.get('designation'): employee.designation = str(record['designation']).strip()
+                        if record.get('location'): employee.location = str(record['location']).strip()
+                        if record.get('bank_account'):
+                            from app.services.pdf_service import parse_bank_account
+                            bn, bk, bb = parse_bank_account(record.get('bank_account', ''))
+                            if bn: employee.bank_number = bn
+                            if bk: employee.bank_name = bk
+                            if bb: employee.bank_branch = bb
+                        if record.get('ssnit_number'): employee.ssnit_number = str(record['ssnit_number']).strip()
                         dj_val = record.get('date_joined', None)
                         if dj_val is not None:
                             parsed_dj = parse_date_joined(dj_val)

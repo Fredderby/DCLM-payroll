@@ -45,6 +45,14 @@ def upload_payroll(file: UploadFile = File(...), current_user: User = Depends(ge
                     db.add(employee)
                     db.commit()
                     db.refresh(employee)
+                else:
+                    # Only update employee fields if the record has non-empty values
+                    if record.get('email'): employee.email = str(record['email']).strip()
+                    if record.get('function'): employee.function = str(record['function']).strip()
+                    if record.get('designation'): employee.designation = str(record['designation']).strip()
+                    if record.get('location'): employee.location = str(record['location']).strip()
+                    if record.get('ssnit_number'): employee.ssnit_number = str(record['ssnit_number']).strip()
+                    db.commit()
                 
                 create_payroll_record(db, employee, record)
                 processed += 1
