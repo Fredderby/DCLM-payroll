@@ -54,3 +54,11 @@ ALTER TABLE payroll_records
 
 ALTER TABLE payroll_records
   ADD COLUMN IF NOT EXISTS ssnit_deduction FLOAT DEFAULT 0 COMMENT 'SSNIT 5.5% deduction for Pastoral & Non-Pastoral staff';
+
+-- ============================================================
+-- Schema Migration: Add missing columns to email_logs table
+-- Run after code deployment
+-- ============================================================
+
+ALTER TABLE email_logs
+  ADD COLUMN IF NOT EXISTS employee_name VARCHAR(255) DEFAULT NULL;
