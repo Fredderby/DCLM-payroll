@@ -7,7 +7,7 @@ class EmailLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
-    employee_name = Column(String(255), nullable=True)
+    employee_name = Column("employee_name", String(255), nullable=True)
     employee_number = Column(String(50), nullable=True)
     payroll_id = Column(Integer, ForeignKey("payroll_records.id"), nullable=True)
     recipient_email = Column(String(255), nullable=True)
