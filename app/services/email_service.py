@@ -247,6 +247,7 @@ async def send_single_and_log(employee_id: int, employee_name: str, employee_num
                                net_salary: float, pdf_path: str, db_session):
     """Send a single payslip email and log the result to EmailLog table."""
     from app.models.email_log import EmailLog
+    from datetime import datetime
     try:
         success, message = await EmailService.send_payslip(
             recipient_email=recipient_email,
