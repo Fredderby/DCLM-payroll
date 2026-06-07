@@ -59,26 +59,57 @@ def init_db():
     try:
         conn = engine.connect()
         
-        # Run schema migrations for tables that might have been altered
-        # UploadHistory: add month column if missing
+        # Recreate email_logs table to ensure schema matches model
         try:
-            conn.execute(text("ALTER TABLE email_logs ADD COLUMN net_salary FLOAT DEFAULT 0"))
+            # Check if table is missing columns by trying to insert a test row
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS email_logs_new (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT DEFAULT NULL,
+                    employee_name VARCHAR(255) DEFAULT NULL,
+                    employee_number VARCHAR(50) DEFAULT NULL,
+                    payroll_id INT DEFAULT NULL,
+                    recipient_email VARCHAR(255) DEFAULT NULL,
+                    status VARCHAR(50) DEFAULT NULL,
+                    month VARCHAR(20) DEFAULT NULL,
+                    net_salary FLOAT DEFAULT 0,
+                    error_message TEXT DEFAULT NULL,
+                    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
             conn.commit()
-            logger.info("Added net_salary column to email_logs table.")
+            # Drop old table and rename new one into place
+            conn.execute(text("DROP TABLE IF EXISTS email_logs_old"))
+            conn.execute(text("RENAME TABLE email_logs TO email_logs_old, email_logs_new TO email_logs"))
+            conn.commit()
+            # Drop the old backup table
+            conn.execute(text("DROP TABLE IF EXISTS email_logs_old"))
+            conn.commit()
+            logger.info("Recreated email_logs table with correct schema.")
         except Exception:
             conn.rollback()
-        try:
-            conn.execute(text("ALTER TABLE email_logs ADD COLUMN employee_number VARCHAR(50) DEFAULT NULL"))
-            conn.commit()
-            logger.info("Added employee_number column to email_logs table.")
-        except Exception:
-            conn.rollback()
-        try:
-            conn.execute(text("ALTER TABLE email_logs ADD COLUMN error_message TEXT DEFAULT NULL"))
-            conn.commit()
-            logger.info("Added error_message column to email_logs table.")
-        except Exception:
-            conn.rollback()
+            # If first run rename failed (table didn't exist), try direct create
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS email_logs (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        employee_id INT DEFAULT NULL,
+                        employee_name VARCHAR(255) DEFAULT NULL,
+                        employee_number VARCHAR(50) DEFAULT NULL,
+                        payroll_id INT DEFAULT NULL,
+                        recipient_email VARCHAR(255) DEFAULT NULL,
+                        status VARCHAR(50) DEFAULT NULL,
+                        month VARCHAR(20) DEFAULT NULL,
+                        net_salary FLOAT DEFAULT 0,
+                        error_message TEXT DEFAULT NULL,
+                        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                conn.commit()
+                logger.info("Created email_logs table with correct schema.")
+            except Exception:
+                conn.rollback()
+        
         try:
             conn.execute(text("ALTER TABLE upload_history ADD COLUMN month VARCHAR(20) DEFAULT NULL"))
             conn.commit()

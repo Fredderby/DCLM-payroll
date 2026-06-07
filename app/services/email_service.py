@@ -249,6 +249,16 @@ async def send_single_and_log(employee_id: int, employee_name: str, employee_num
     from app.models.email_log import EmailLog
     from datetime import datetime
     try:
+        # Clear old email logs for this employee/payroll before logging new one
+        try:
+            old_logs = db_session.query(EmailLog).filter(
+                EmailLog.payroll_id == payroll_id
+            ).all()
+            for log in old_logs:
+                db_session.delete(log)
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
         success, message = await EmailService.send_payslip(
             recipient_email=recipient_email,
             employee_name=employee_name,
