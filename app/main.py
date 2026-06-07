@@ -1683,6 +1683,19 @@ async def send_all_payslips_page(request: Request, db: Session = Depends(get_db)
         except Exception:
             email_logs = []
         
+        # Build set of payroll_ids that have been sent successfully
+        sent_payroll_ids = set()
+        try:
+            sent_logs = db.query(EmailLog).filter(EmailLog.status == "sent").all()
+            for log in sent_logs:
+                if log.payroll_id:
+                    sent_payroll_ids.add(log.payroll_id)
+        except Exception:
+            pass
+        
+        for p in payslips:
+            p.email_sent = p.id in sent_payroll_ids
+        
         template = templates.get_template("send_payslips.html")
         rendered = template.render({
             "user": current_user,
@@ -2674,7 +2687,7 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
     from app.models.payroll import PayrollRecord
     from app.models.employee import Employee
     from app.services.pdf_service import generate_payslip_pdf
-    from app.services.email_service import send_payslip_email
+    from app.services.email_service import send_single_and_log
 
     record = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
     if not record:
@@ -2724,9 +2737,19 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
     if not pdf_path or not os.path.exists(pdf_path):
         return JSONResponse(content={"success": False, "error": "Failed to generate PDF"})
 
-    # Send email
+    # Send email and log result
     try:
-        success, error_msg = await send_payslip_email(emp.email, emp.name, pdf_path, record.month, record.net_salary)
+        success, error_msg = await send_single_and_log(
+            employee_id=emp.id,
+            employee_name=emp.name,
+            employee_number=emp.employee_number or "",
+            recipient_email=emp.email,
+            payroll_id=record.id,
+            month=record.month,
+            net_salary=record.net_salary or 0,
+            pdf_path=pdf_path,
+            db_session=db
+        )
         if success:
             return JSONResponse(content={"success": True, "message": "Payslip sent to " + emp.email})
         else:
