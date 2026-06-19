@@ -134,9 +134,6 @@
           <form method="POST" action="/loans/delete/{{ loan.id }}" style="display:inline;" onsubmit="return confirm('Delete this loan record? Cannot be undone.')"><button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i> Delete</button></form>
         </div>
       </div>
-        <button class="btn btn-sm loan-pay-btn" data-id="{{ loan.id }}" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-circle" style="color:#059669;"></i> Pay</button>
-        <button class="btn btn-sm loan-complete-btn" data-id="{{ loan.id }}" {% if loan.status == 'Completed' %}disabled{% endif %}><i class="fas fa-check-double" style="color:#667eea;"></i> Complete</button>
-      </div>
     </div>
   </div>
   {% endfor %}
