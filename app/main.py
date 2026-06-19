@@ -1321,6 +1321,8 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             alias_map[a.alias_name] = a.employee_id
             alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
         
+        # Build employee lookup dict for payslips
+        payslip_employees = {}
         for p in payslips:
             emp_name = (p.employee_name or '').strip()
             emp = all_employees.get(emp_name)
@@ -1335,9 +1337,7 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
                         if e.id == alias_emp_id:
                             emp = e
                             break
-            p.employee = emp
-            # Attach employee_map for template use (works even when emp is None)
-            p.employee_map = emp
+            payslip_employees[p.id] = emp
         
         # Generate stats from all records
         if selected_month:
@@ -1352,6 +1352,7 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         rendered = template.render({
             "user": current_user, 
             "payslips": payslips,
+            "payslip_employees": payslip_employees,
             "months": months,
             "selected_month": selected_month,
             "total_payslips": total_payslips,

@@ -80,7 +80,7 @@
 <!-- Cards View (default) -->
 <div id="cardsView" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px;">
   {% for p in payslips %}
-  {% set emp = p.employee_map if p.employee_map is defined else p.employee %}
+  {% set emp = payslip_employees.get(p.id) %}
   <div class="payslip-card" data-name="{{ (emp.name if emp else p.employee_name)|lower }}" data-email="{{ (emp.email if emp else '')|lower }}" data-month="{{ p.month }}">
     <div class="payslip-card-header">
       <div class="payslip-card-avatar">
@@ -142,7 +142,7 @@
       </thead>
       <tbody>
         {% for p in payslips %}
-        {% set emp = p.employee_map if p.employee_map is defined else p.employee %}
+        {% set emp = payslip_employees.get(p.id) %}
         <tr data-name="{{ (emp.name if emp else p.employee_name)|lower }}" data-email="{{ (emp.email if emp else '')|lower }}" data-month="{{ p.month }}">
           <td><strong>{{ emp.name if emp else p.employee_name }}</strong></td>
           <td><span class="badge badge-secondary">{{ emp.employee_number if emp else 'N/A' }}</span></td>
