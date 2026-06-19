@@ -512,7 +512,7 @@
   // ─── ADD LOAN BUTTON ───
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('#addLoanBtn, #addLoanBtn2');
-    if (btn) { e.preventDefault(); document.getElementById('loanModalTitle').textContent='Register Loan';document.getElementById('loanForm').action='/loans/add';document.getElementById('loanForm').reset();selectedEmployee='';hiddenInput.value='';selectedDisplay.style.display='none';setTimeout(calc,100);new bootstrap.Modal(document.getElementById('loanModal')).show(); }
+    if (btn) { e.preventDefault(); document.getElementById('loanModalTitle').textContent='Register Loan';document.getElementById('loanForm').action='/loans/add';document.getElementById('loanForm').reset();selectedEmployee='';hiddenInput.value='';selectedDisplay.style.display='none';new bootstrap.Modal(document.getElementById('loanModal')).show(); }
   });
 
   // ─── BULK BUTTON ───
