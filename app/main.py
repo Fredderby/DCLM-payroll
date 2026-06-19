@@ -1313,12 +1313,28 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             all_employees[e.name] = e
             all_employees[' '.join((e.name or '').split()).upper()] = e
         
+        # Also build alias lookup
+        from app.models.employee_alias import EmployeeAlias
+        all_aliases = db.query(EmployeeAlias).all()
+        alias_map = {}
+        for a in all_aliases:
+            alias_map[a.alias_name] = a.employee_id
+            alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
+        
         for p in payslips:
             emp_name = (p.employee_name or '').strip()
             emp = all_employees.get(emp_name)
             if not emp:
                 normalized = ' '.join(emp_name.split()).upper()
                 emp = all_employees.get(normalized)
+            if not emp:
+                # Try alias lookup
+                alias_emp_id = alias_map.get(emp_name) or alias_map.get(normalized)
+                if alias_emp_id:
+                    for e in all_emps:
+                        if e.id == alias_emp_id:
+                            emp = e
+                            break
             p.employee = emp
             # Attach employee_map for template use (works even when emp is None)
             p.employee_map = emp
