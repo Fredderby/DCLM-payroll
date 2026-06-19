@@ -1416,112 +1416,118 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     from app.models.loan import Loan
     from app.services.pdf_service import generate_payslip_pdf
     
-    payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
-    if not payroll:
-        from fastapi.responses import JSONResponse
-        return JSONResponse(status_code=404, content={"error": "Payslip not found"})
-    
-    # Generate PDF on demand if not already generated (for preview button to work)
-    if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or "")):
-        try:
-            pdf_path = generate_payslip_pdf(db, payroll.id)
-            if pdf_path:
-                payroll.pdf_generated = pdf_path
-                db.commit()
-        except Exception as e:
-            pass  # PDF generation failed, preview still works
-    
-    # Robust employee lookup with alias matching
-    from app.models.employee_alias import EmployeeAlias
-    emp_name = (payroll.employee_name or '').strip()
-    employee = db.query(Employee).filter(Employee.name == emp_name).first()
-    if not employee:
-        norm_name = ' '.join(emp_name.split()).upper()
-        employee = db.query(Employee).filter(Employee.name.ilike(norm_name.replace(' ', '%'))).first()
-    if not employee:
-        alias = db.query(EmployeeAlias).filter(
-            (EmployeeAlias.alias_name == emp_name) |
-            (EmployeeAlias.alias_name.ilike(norm_name))
-        ).first()
-        if alias:
-            employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
-    
-    emp_data = {
-        "name": employee.name if employee else payroll.employee_name or "Unknown",
-        "employee_number": employee.employee_number if employee else "N/A",
-        "designation": employee.designation if employee else "",
-        "function": employee.function if employee else "",
-        "location": employee.location if employee else "",
-        "bank_name": employee.bank_name if employee else "N/A",
-        "bank_branch": employee.bank_branch if employee else "",
-        "bank_number": employee.bank_number if employee else "N/A",
-        "email": employee.email if employee else "",
-        "date_joined": str(employee.date_joined) if employee and employee.date_joined else "",
-        "ssnit_number": employee.ssnit_number if employee else "",
+    try:
+        payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
+        if not payroll:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"error": "Payslip not found"})
+        
+        # Generate PDF on demand if not already generated (for preview button to work)
+        if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or "")):
+            try:
+                pdf_path = generate_payslip_pdf(db, payroll.id)
+                if pdf_path:
+                    payroll.pdf_generated = pdf_path
+                    db.commit()
+            except Exception as e:
+                pass  # PDF generation failed, preview still works
+        
+        # Robust employee lookup with alias matching
+        from app.models.employee_alias import EmployeeAlias
+        emp_name = (payroll.employee_name or '').strip()
+        employee = db.query(Employee).filter(Employee.name == emp_name).first()
+        if not employee:
+            norm_name = ' '.join(emp_name.split()).upper()
+            employee = db.query(Employee).filter(Employee.name.ilike(norm_name.replace(' ', '%'))).first()
+        if not employee:
+            alias = db.query(EmployeeAlias).filter(
+                (EmployeeAlias.alias_name == emp_name) |
+                (EmployeeAlias.alias_name.ilike(norm_name))
+            ).first()
+            if alias:
+                employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
+        
+        emp_data = {
+            "name": employee.name if employee else payroll.employee_name or "Unknown",
+            "employee_number": employee.employee_number if employee else "N/A",
+            "designation": employee.designation if employee else "",
+            "function": employee.function if employee else "",
+            "location": employee.location if employee else "",
+            "bank_name": employee.bank_name if employee else "N/A",
+            "bank_branch": employee.bank_branch if employee else "",
+            "bank_number": employee.bank_number if employee else "N/A",
+            "email": employee.email if employee else "",
+            "date_joined": str(employee.date_joined) if employee and employee.date_joined else "",
+            "ssnit_number": employee.ssnit_number if employee else "",
+            }
+
+        # Fetch loans for this employee (matched by name)
+        loans_data = []
+        if employee and employee.name:
+            loan_records = db.query(Loan).filter(Loan.employee_name == employee.name).filter(Loan.status != "Completed").all()
+            for loan in loan_records:
+                months_remaining = max(0, (loan.months_to_pay or 1) - (loan.months_paid or 0))
+                loans_data.append({
+                    "bank_name": loan.bank_name or "",
+                    "loan_amount": float(loan.loan_amount or 0),
+                    "amount_paid": float(loan.amount_paid or 0),
+                    "months_remaining": months_remaining
+                })
+        
+        # Net salary in words
+        net_words = ""
+        if payroll.net_salary:
+            try:
+                from app.services.payroll_service import number_to_words
+                net_words = number_to_words(payroll.net_salary)
+            except Exception:
+                net_words = ""
+
+        # Determine staff category for component segregation
+        staff_category = payroll.staff_category or "pastoral"
+        
+        return {
+            "id": payroll.id,
+            "month": payroll.month,
+            "employee_name": payroll.employee_name or "N/A",
+            "employee_number": emp_data.get("employee_number", "N/A"),
+            "email": emp_data.get("email", ""),
+            "designation": emp_data.get("designation", ""),
+            "function": emp_data.get("function", ""),
+            "location": emp_data.get("location", ""),
+            "bank_name": emp_data.get("bank_name", "N/A"),
+            "bank_branch": emp_data.get("bank_branch", ""),
+            "bank_number": emp_data.get("bank_number", "N/A"),
+            "date_joined": emp_data.get("date_joined", ""),
+            "ssnit_number": emp_data.get("ssnit_number", ""),
+            "basic_salary": float(payroll.basic_salary or 0),
+            "meals_monthly": float(payroll.meals_monthly or 0),
+            "responsibility_allowance": float(payroll.responsibility_allowance or 0),
+            "cola": float(payroll.cola or 0),
+            "leave_allowance": float(payroll.leave_allowance or 0),
+            "other_earnings": float(payroll.other_earnings or 0),
+            "total_earnings": float(payroll.total_earnings or 0),
+            "rent_monthly": float(payroll.rent_monthly or 0),
+            "utility_monthly": float(payroll.utility_monthly or 0),
+            "transport_monthly": float(payroll.transport_monthly or 0),
+            "paye": float(payroll.paye or 0),
+            "tithe": float(payroll.tithe or 0),
+            "future_savings": float(payroll.future_savings or 0),
+            "other_deductions": float(payroll.other_deductions or 0),
+            "ssnit_deduction": float(payroll.ssnit_deduction or 0),
+            "pf_eight_percent": float(payroll.pf_eight_percent or 0),
+            "total_deductions": float(payroll.total_deductions or 0),
+            "net_salary": float(payroll.net_salary or 0),
+            "staff_category": staff_category,
+            "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
+            "loans": loans_data,
+            "net_salary_words": net_words
         }
-
-    # Fetch loans for this employee (matched by name)
-    loans_data = []
-    if employee and employee.name:
-        loan_records = db.query(Loan).filter(Loan.employee_name == employee.name).filter(Loan.status != "Completed").all()
-        for loan in loan_records:
-            months_remaining = max(0, (loan.months_to_pay or 1) - (loan.months_paid or 0))
-            loans_data.append({
-                "bank_name": loan.bank_name or "",
-                "loan_amount": float(loan.loan_amount or 0),
-                "amount_paid": float(loan.amount_paid or 0),
-                "months_remaining": months_remaining
-            })
-    
-    # Net salary in words
-    net_words = ""
-    if payroll.net_salary:
-        try:
-            from app.services.payroll_service import number_to_words
-            net_words = number_to_words(payroll.net_salary)
-        except Exception:
-            net_words = ""
-
-    # Determine staff category for component segregation
-    staff_category = payroll.staff_category or "pastoral"
-    
-    return {
-        "id": payroll.id,
-        "month": payroll.month,
-        "employee_name": payroll.employee_name or "N/A",
-        "employee_number": emp_data.get("employee_number", "N/A"),
-        "email": emp_data.get("email", ""),
-        "designation": emp_data.get("designation", ""),
-        "function": emp_data.get("function", ""),
-        "location": emp_data.get("location", ""),
-        "bank_name": emp_data.get("bank_name", "N/A"),
-        "bank_branch": emp_data.get("bank_branch", ""),
-        "bank_number": emp_data.get("bank_number", "N/A"),
-        "date_joined": emp_data.get("date_joined", ""),
-        "ssnit_number": emp_data.get("ssnit_number", ""),
-        "basic_salary": float(payroll.basic_salary or 0),
-        "meals_monthly": float(payroll.meals_monthly or 0),
-        "responsibility_allowance": float(payroll.responsibility_allowance or 0),
-        "cola": float(payroll.cola or 0),
-        "leave_allowance": float(payroll.leave_allowance or 0),
-        "other_earnings": float(payroll.other_earnings or 0),
-        "total_earnings": float(payroll.total_earnings or 0),
-        "rent_monthly": float(payroll.rent_monthly or 0),
-        "utility_monthly": float(payroll.utility_monthly or 0),
-        "transport_monthly": float(payroll.transport_monthly or 0),
-        "paye": float(payroll.paye or 0),
-        "tithe": float(payroll.tithe or 0),
-        "future_savings": float(payroll.future_savings or 0),
-        "other_deductions": float(payroll.other_deductions or 0),
-        "ssnit_deduction": float(payroll.ssnit_deduction or 0),
-        "pf_eight_percent": float(payroll.pf_eight_percent or 0),
-        "total_deductions": float(payroll.total_deductions or 0),
-        "net_salary": float(payroll.net_salary or 0),
-        "staff_category": staff_category,
-        "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
-        "loans": loans_data,
-        "net_salary_words": net_words
-    }
+    except Exception as e:
+        from fastapi.responses import JSONResponse
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(status_code=500, content={"error": f"Error loading payslip data: {str(e)}"})
 
 @app.get("/payslips/{payroll_id}/download")
 async def download_payslip(payroll_id: int, request: Request, db: Session = Depends(get_db)):
