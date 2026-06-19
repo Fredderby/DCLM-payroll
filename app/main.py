@@ -1975,6 +1975,39 @@ async def get_employee_names(request: Request, db: Session = Depends(get_db)):
     names = [e.name for e in employees if e.name]
     return JSONResponse(content={"names": names})
 
+@app.post("/loans/bulk-pay")
+async def bulk_pay_loans(request: Request, db: Session = Depends(get_db)):
+    """Record payments for multiple selected loans."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    from app.models.loan import Loan
+    
+    form = await request.form()
+    loan_ids = form.getlist("loan_ids")
+    
+    paid_count = 0
+    for loan_id_str in loan_ids:
+        loan = db.query(Loan).filter(Loan.id == int(loan_id_str)).first()
+        if not loan or loan.status == "Completed":
+            continue
+        
+        payment_amount = loan.monthly_deduction or 0
+        loan.amount_paid = (loan.amount_paid or 0) + payment_amount
+        loan.months_paid = (loan.months_paid or 0) + 1
+        loan.balance = max(0, (loan.total_receivable or 0) - (loan.amount_paid or 0))
+        
+        if loan.balance <= 0:
+            loan.status = "Completed"
+        
+        paid_count += 1
+    
+    db.commit()
+    return RedirectResponse(url=f"/loans?success=Bulk+payment+recorded+for+{paid_count}+loan(s)", status_code=303)
+
+
 @app.post("/loans/pay")
 async def pay_loan(request: Request, loan_id: int = Form(...), db: Session = Depends(get_db)):
     """Record one monthly payment. Reduces months remaining and increases amount paid."""

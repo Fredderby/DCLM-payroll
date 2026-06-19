@@ -148,6 +148,7 @@
     <table class="table" id="loanTable">
       <thead>
         <tr>
+          <th style="width:40px;"><input type="checkbox" id="selectAllPay" style="width:16px;height:16px;" /></th>
           <th>Employee</th>
           <th>Bank</th>
           <th>Amount</th>
@@ -161,6 +162,7 @@
       <tbody>
         {% for loan in loans %}
         <tr class="loan-item" data-name="{{ loan.employee_name|lower }}" data-status="{{ loan.status or 'Active' }}">
+          <td><input type="checkbox" class="bulk-pay-check" value="{{ loan.id }}" data-amount="{{ loan.monthly_deduction or 0 }}" data-name="{{ loan.employee_name }}" {% if loan.status == 'Completed' %}disabled{% endif %} style="width:16px;height:16px;" /></td>
           <td><strong>{{ loan.employee_name }}</strong></td>
           <td>{{ loan.bank_name or 'N/A' }}</td>
           <td>GHS {{ "{:,.2f}".format(loan.loan_amount or 0) }}</td>
@@ -247,6 +249,28 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Loan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Pay Modal -->
+<div class="modal fade" id="bulkPayModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="/loans/bulk-pay" method="POST">
+        <div class="modal-header" style="background:linear-gradient(135deg,#059669,#38ef7d);color:white;">
+          <h5 class="modal-title"><i class="fas fa-money-bill-wave"></i> Bulk Pay</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="bulkPayList" style="max-height:300px;overflow-y:auto;"></div>
+          <div class="mt-3" style="text-align:center;font-size:18px;font-weight:700;color:#059669;" id="bulkPayTotal">Total: GHS 0.00</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> Pay Selected</button>
         </div>
       </form>
     </div>
@@ -459,8 +483,7 @@
       if (checkedEmps.length === 0) { alert('Please select at least one employee.'); return; }
       var formData = new FormData();
       var bankName = document.getElementById('bulkBankName')?.value || '';
-      var months = parseInt(document.getElementById('bulkMonths')?.value) || 12;
-      var interest = parseFloat(document.getElementById('bulkInterest')?.value) || 0;
+      var monthlyDeduction = parseFloat(document.getElementById('bulkMonthlyDeduction')?.value) || 0;
       var validCount = 0;
       checkedEmps.forEach(function(cb) {
         var row = cb.closest('tr');
@@ -473,14 +496,42 @@
       });
       if (validCount === 0) { alert('Please enter valid loan amounts for selected employees.'); return; }
       formData.append('bank_name', bankName);
-      formData.append('months_to_pay', months.toString());
-      formData.append('interest_amount', interest.toString());
+      formData.append('monthly_deduction', monthlyDeduction.toString());
       // Submit via POST
       fetch('/loans/bulk-add', {method:'POST', body:formData, credentials:'same-origin'})
         .then(function(r){window.location.href = r.url;})
         .catch(function(){alert('Submission failed. Please try again.');});
     };
   }
+
+  // ─── BULK PAY ───
+  var selectAllPay = document.getElementById('selectAllPay');
+  if (selectAllPay) {
+    selectAllPay.onchange = function() {
+      var checked = this.checked;
+      document.querySelectorAll('.bulk-pay-check:not(:disabled)').forEach(function(cb){cb.checked = checked;});
+    };
+  }
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#bulkPayBtn');
+    if (btn) {
+      e.preventDefault();
+      var checked = document.querySelectorAll('.bulk-pay-check:checked');
+      if (checked.length === 0) { alert('Please select at least one loan to pay.'); return; }
+      var list = document.getElementById('bulkPayList');
+      var total = 0;
+      var html = '';
+      checked.forEach(function(cb) {
+        var name = cb.getAttribute('data-name') || 'Unknown';
+        var amount = parseFloat(cb.getAttribute('data-amount')) || 0;
+        total += amount;
+        html += '<div style="display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #e2e8f0;"><span>' + name + '</span><span style="font-weight:600;color:#059669;">GHS ' + amount.toFixed(2) + '</span><input type="hidden" name="loan_ids" value="' + cb.value + '" /></div>';
+      });
+      list.innerHTML = html;
+      document.getElementById('bulkPayTotal').textContent = 'Total: GHS ' + total.toFixed(2);
+      new bootstrap.Modal(document.getElementById('bulkPayModal')).show();
+    }
+  });
 
   // ─── PAYMENT MODAL ───
   document.addEventListener('click', function(e) {
