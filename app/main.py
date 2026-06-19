@@ -1856,74 +1856,10 @@ async def loans_page(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/api/employee-names")
-async def loans_page(request: Request, db: Session = Depends(get_db)):
-    try:
-        current_user = get_current_user_web(request, db)
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    from app.models.loan import Loan
+async def api_employee_names(db: Session = Depends(get_db)):
     from app.models.employee import Employee
-    from app.services.cache_service import get_cache, set_cache
-    import json
-    
-    cache_key = "loans_data"
-    cached = get_cache(cache_key)
-    if cached:
-        loans, employees_list, active_count, total_outstanding_sum, total_loaned_sum, completed_count = cached
-        employees_json = json.dumps(employees_list)
-    else:
-        loans = db.query(Loan).order_by(Loan.created_at.desc()).all()
-        employees = db.query(Employee).all()
-        
-        # Prepare employees JSON for autocomplete
-        employees_list = [{"name": e.name, "employee_number": e.employee_number or ""} for e in employees if e.name]
-        employees_json = json.dumps(employees_list)
-        
-        # Stats
-        active_count = db.query(Loan).filter(Loan.status == "Active").count()
-        total_outstanding = db.query(Loan).filter(Loan.status == "Active").with_entities(Loan.balance).all()
-        total_outstanding_sum = sum(b[0] or 0 for b in total_outstanding)
-        total_loaned = db.query(Loan).with_entities(Loan.loan_amount).all()
-        total_loaned_sum = sum(l[0] or 0 for l in total_loaned)
-        completed_count = db.query(Loan).filter(Loan.status == "Completed").count()
-        set_cache(cache_key, (loans, employees_list, active_count, total_outstanding_sum, total_loaned_sum, completed_count), ttl_seconds=120)
-    
-    stats = {
-        "active_count": active_count,
-        "total_outstanding": total_outstanding_sum,
-        "total_loaned": total_loaned_sum,
-        "completed_count": completed_count
-    }
-    
-    import json as _json_mod
-    loans_json = _json_mod.dumps([{
-        "id": l.id,
-        "employee_name": l.employee_name,
-        "bank_name": l.bank_name,
-        "loan_amount": l.loan_amount,
-        "interest_amount": l.interest_amount,
-        "total_receivable": l.total_receivable,
-        "monthly_deduction": l.monthly_deduction,
-        "amount_paid": l.amount_paid,
-        "months_to_pay": l.months_to_pay,
-        "months_paid": l.months_paid,
-        "balance": l.balance,
-        "status": l.status,
-        "notes": l.notes
-    } for l in loans])
-    
-    template = templates.get_template("loans.html")
-    rendered = template.render({
-        "user": current_user,
-        "loans": loans,
-        "stats": stats,
-        "employees_json": employees_json,
-        "loans_json": loans_json,
-        "success": request.query_params.get("success"),
-        "error": request.query_params.get("error")
-    })
-    return HTMLResponse(content=rendered, media_type="text/html")
+    employees = db.query(Employee).filter(Employee.name.isnot(None)).all()
+    return JSONResponse(content={"names": [e.name for e in employees]})
 
 @app.post("/loans/bulk-add")
 async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
@@ -1953,20 +1889,14 @@ async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
         if loan_amount <= 0:
             continue
         
-        total_receivable = loan_amount + interest_amount
-        monthly_deduction = total_receivable / months_to_pay if months_to_pay > 0 else total_receivable
-        
         loan = Loan(
             employee_name=name.strip(),
             bank_name=bank_name,
             loan_amount=loan_amount,
             months_to_pay=months_to_pay,
             interest_amount=interest_amount,
-            total_receivable=total_receivable,
-            monthly_deduction=monthly_deduction,
             amount_paid=0,
             months_paid=0,
-            balance=total_receivable,
             status="Active"
         )
         db.add(loan)
@@ -1988,20 +1918,14 @@ async def add_loan(request: Request, employee_name: str = Form(...), bank_name: 
     from app.models.loan import Loan
     
     try:
-        total_receivable = loan_amount + interest_amount
-        monthly_deduction = total_receivable / months_to_pay if months_to_pay > 0 else total_receivable
-        
         loan = Loan(
             employee_name=employee_name,
             bank_name=bank_name,
             loan_amount=loan_amount,
             interest_amount=interest_amount,
             months_to_pay=months_to_pay,
-            total_receivable=total_receivable,
-            monthly_deduction=monthly_deduction,
             amount_paid=0,
             months_paid=0,
-            balance=total_receivable,
             status="Active",
             notes=notes
         )

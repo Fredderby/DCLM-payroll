@@ -428,10 +428,7 @@
     };
   }
 
-  // ─── AUTO-CALCULATE ───
-  var loanAmt=document.getElementById('loanAmount'), monInp=document.getElementById('monthsToPay'), intInp=document.getElementById('interestAmount'), totRecv=document.getElementById('totalReceivable'), monDed=document.getElementById('monthlyDeduction');
-  function calc(){var a=parseFloat(loanAmt?.value||0),i=parseFloat(intInp?.value||0),m=parseInt(monInp?.value)||1,t=a+i;if(totRecv)totRecv.value='GHS '+t.toFixed(2);if(monDed)monDed.value=m>0?'GHS '+(t/m).toFixed(2):'GHS 0.00';}
-  if(loanAmt)loanAmt.oninput=calc;if(monInp)monInp.oninput=calc;if(intInp)intInp.oninput=calc;setTimeout(calc,100);
+  // ─── AUTO-CALCULATE REMOVED — Total Receivable and Monthly Deduction are manual entry fields ───
 
   // ─── BULK: Select All + Update Count ───
   var selectAll = document.getElementById('selectAllEmployees');
