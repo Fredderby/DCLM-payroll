@@ -8,6 +8,7 @@
 {% block header_actions %}
 <button class="btn btn-primary btn-sm" id="addLoanBtn"><i class="fas fa-plus"></i> Add Loan</button>
 <button class="btn btn-secondary btn-sm" id="bulkLoanBtn"><i class="fas fa-users"></i> Bulk Register</button>
+<button class="btn btn-success btn-sm" id="bulkPayBtn"><i class="fas fa-money-bill-wave"></i> Bulk Pay</button>
 {% endblock %}
 
 {% block content %}
@@ -239,8 +240,8 @@
           </div>
           <div class="row g-3 mt-2">
             <div class="col-md-4"><label style="font-size:13px;">Total Receivable</label><input type="text" id="totalReceivable" class="form-control" readonly /></div>
-            <div class="col-md-4"><label style="font-size:13px;">Monthly Deduction</label><input type="text" id="monthlyDeduction" class="form-control" readonly /></div>
-            <div class="col-md-4"><label style="font-size:13px;">Notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Optional..."></textarea></div>
+            <div class="col-md-4"><label style="font-size:13px;">Monthly Deduction (GHS) <small class="text-muted">Enter to auto-calc months</small></label><input type="number" step="0.01" id="monthlyDeduction" name="monthly_deduction" class="form-control" placeholder="Enter monthly payment" /></div>
+            <div class="col-md-4"></div>
           </div>
         </div>
         <div class="modal-footer">
@@ -265,16 +266,13 @@
           <div class="row g-3 mb-3">
             <div class="col-md-4">
               <label class="form-label" style="font-size:13px;">Global Bank Name</label>
-              <input type="text" id="bulkBankName" class="form-control" placeholder="GCB Bank" />
+              <input type="text" id="bulkBankName" name="bank_name" class="form-control" placeholder="GCB Bank" />
             </div>
             <div class="col-md-4">
-              <label class="form-label" style="font-size:13px;">Global Months</label>
-              <input type="number" id="bulkMonths" class="form-control" value="12" min="1" />
+              <label class="form-label" style="font-size:13px;">Global Monthly Deduction (GHS)</label>
+              <input type="number" step="0.01" id="bulkMonthlyDeduction" class="form-control" placeholder="Enter monthly payment" />
             </div>
-            <div class="col-md-4">
-              <label class="form-label" style="font-size:13px;">Global Interest (GHS)</label>
-              <input type="number" step="0.01" id="bulkInterest" class="form-control" value="0" />
-            </div>
+            <div class="col-md-4"></div>
           </div>
           <div class="d-flex justify-content-between align-items-center mb-2">
             <label class="form-label" style="font-size:13px;margin:0;">Select Employees & Set Individual Amounts</label>
@@ -428,7 +426,11 @@
     };
   }
 
-  // ─── AUTO-CALCULATE REMOVED — Total Receivable and Monthly Deduction are manual entry fields ───
+  // ─── AUTO-CALCULATE: monthly_deduction entered → months_to_pay = total_receivable / monthly_deduction ───
+  var loanAmt=document.getElementById('loanAmount'), monInp=document.getElementById('monthsToPay'), intInp=document.getElementById('interestAmount'), totRecv=document.getElementById('totalReceivable'), monDed=document.getElementById('monthlyDeduction');
+  function calcTot(){var a=parseFloat(loanAmt?.value||0),i=parseFloat(intInp?.value||0),t=a+i;if(totRecv)totRecv.value='GHS '+t.toFixed(2);}
+  function calcMonths(){var t=parseFloat(totRecv?.value.replace(/[^0-9.-]/g,'')||0),m=parseFloat(monDed?.value||0);if(m>0&&t>0){var n=Math.ceil(t/m);if(monInp)monInp.value=n;}}
+  if(loanAmt)loanAmt.oninput=function(){calcTot();calcMonths();};if(intInp)intInp.oninput=function(){calcTot();calcMonths();};if(monDed)monDed.oninput=calcMonths;if(totRecv)totRecv.oninput=calcMonths;setTimeout(calcTot,100);
 
   // ─── BULK: Select All + Update Count ───
   var selectAll = document.getElementById('selectAllEmployees');

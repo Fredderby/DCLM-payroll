@@ -1876,8 +1876,7 @@ async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
     employee_names = form.getlist("employee_names")
     loan_amounts = form.getlist("loan_amounts")
     bank_name = form.get("bank_name", "") or ""
-    months_to_pay = int(form.get("months_to_pay", 12))
-    interest_amount = float(form.get("interest_amount", 0)) if form.get("interest_amount") else 0
+    monthly_deduction = float(form.get("monthly_deduction", 0)) if form.get("monthly_deduction") else 0
     
     added = 0
     for i, name in enumerate(employee_names):
@@ -1889,12 +1888,18 @@ async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
         if loan_amount <= 0:
             continue
         
+        # Auto-calculate months based on monthly deduction
+        if monthly_deduction > 0:
+            months_to_pay = max(1, round(loan_amount / monthly_deduction))
+        else:
+            months_to_pay = 1
+        
         loan = Loan(
             employee_name=name.strip(),
             bank_name=bank_name,
             loan_amount=loan_amount,
             months_to_pay=months_to_pay,
-            interest_amount=interest_amount,
+            interest_amount=0,
             amount_paid=0,
             months_paid=0,
             status="Active"
@@ -1908,7 +1913,8 @@ async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
 @app.post("/loans/add")
 async def add_loan(request: Request, employee_name: str = Form(...), bank_name: str = Form(default=""),
                    loan_amount: float = Form(default=0), interest_amount: float = Form(default=0),
-                   months_to_pay: int = Form(default=1), notes: str = Form(default=""),
+                   monthly_deduction: float = Form(default=0),
+                   total_receivable: str = Form(default=""), notes: str = Form(default=""),
                    db: Session = Depends(get_db)):
     try:
         current_user = get_current_user_web(request, db)
@@ -1918,14 +1924,33 @@ async def add_loan(request: Request, employee_name: str = Form(...), bank_name: 
     from app.models.loan import Loan
     
     try:
+        # Auto-calculate months_to_pay from loan_amount / monthly_deduction
+        if monthly_deduction > 0:
+            months_to_pay = max(1, round(loan_amount / monthly_deduction))
+        else:
+            months_to_pay = 1
+        
+        # Parse total_receivable if provided, otherwise use loan_amount + interest
+        total_receivable_val = 0
+        if total_receivable and 'GHS' in total_receivable:
+            try:
+                total_receivable_val = float(total_receivable.replace('GHS', '').strip())
+            except:
+                total_receivable_val = loan_amount + interest_amount
+        else:
+            total_receivable_val = loan_amount + interest_amount
+        
         loan = Loan(
             employee_name=employee_name,
             bank_name=bank_name,
             loan_amount=loan_amount,
             interest_amount=interest_amount,
             months_to_pay=months_to_pay,
+            total_receivable=total_receivable_val,
+            monthly_deduction=monthly_deduction,
             amount_paid=0,
             months_paid=0,
+            balance=total_receivable_val,
             status="Active",
             notes=notes
         )
