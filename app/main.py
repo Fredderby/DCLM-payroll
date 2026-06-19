@@ -1930,15 +1930,7 @@ async def add_loan(request: Request, employee_name: str = Form(...), bank_name: 
         else:
             months_to_pay = 1
         
-        # Parse total_receivable if provided, otherwise use loan_amount + interest
-        total_receivable_val = 0
-        if total_receivable and 'GHS' in total_receivable:
-            try:
-                total_receivable_val = float(total_receivable.replace('GHS', '').strip())
-            except:
-                total_receivable_val = loan_amount + interest_amount
-        else:
-            total_receivable_val = loan_amount + interest_amount
+        total_receivable_val = loan_amount + interest_amount
         
         loan = Loan(
             employee_name=employee_name,
@@ -1961,19 +1953,6 @@ async def add_loan(request: Request, employee_name: str = Form(...), bank_name: 
     except Exception as e:
         db.rollback()
         return RedirectResponse(url=f"/loans?error={str(e)}", status_code=303)
-
-@app.get("/api/employee-names")
-async def get_employee_names(request: Request, db: Session = Depends(get_db)):
-    """Return list of employee names for autocomplete"""
-    try:
-        current_user = get_current_user_web(request, db)
-    except Exception:
-        return JSONResponse(content={"names": []})
-    
-    from app.models.employee import Employee
-    employees = db.query(Employee).filter(Employee.name.isnot(None)).all()
-    names = [e.name for e in employees if e.name]
-    return JSONResponse(content={"names": names})
 
 @app.post("/loans/bulk-pay")
 async def bulk_pay_loans(request: Request, db: Session = Depends(get_db)):
