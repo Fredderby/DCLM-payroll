@@ -452,7 +452,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     elements.append(Spacer(1, 0.12*inch))
 
     # ═══════════ LOAN TABLE ═══════════
-    loans = db.query(Loan).filter(Loan.employee_name == payroll.employee_name, Loan.status == "Active").all()
+    loans = db.query(Loan).filter(Loan.employee_name == employee.name, Loan.status != "Completed").all()
     if loans:
         loan_title = ParagraphStyle('lt', fontSize=8, fontName='Helvetica-Bold',
                                      textColor=DEEP_BLUE, alignment=TA_LEFT)

@@ -1355,8 +1355,8 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         total_earnings = float(stats_row.total_earn or 0)
         total_deductions = float(stats_row.total_deduc or 0)
         
-        # Load payslips ordered by name for display
-        payslips = query.order_by(PayrollRecord.employee_name).all()
+        # Load payslips with a safety cap to prevent excessive memory/rendering
+        payslips = query.order_by(PayrollRecord.employee_name).limit(500).all()
         
         # Build employee lookup for the loaded payslips only
         payslip_names = list(set(p.employee_name for p in payslips if p.employee_name))
@@ -1372,27 +1372,42 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
                     all_employees[e.name] = e
                     all_employees[' '.join((e.name or '').split()).upper()] = e
         
-        # Also build alias lookup (only if needed)
+        # Build alias lookup
         from app.models.employee_alias import EmployeeAlias
         alias_map = {}
         for a in db.query(EmployeeAlias).all():
             alias_map[a.alias_name] = a.employee_id
             alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
         
-        # Fuzzy matching fallback for payslip names still unmatched
+        # Fuzzy matching fallback for still-unmatched names
         fuzzy_needed = [n for n in payslip_names
                         if n not in all_employees
                         and ' '.join(n.split()).upper() not in all_employees
                         and not (alias_map.get(n) or alias_map.get(' '.join(n.split()).upper()))]
         if fuzzy_needed and all_employees:
             unique_emps = {e.id: e for e in all_employees.values()}.values()
+            emp_norms = {e.id: normalize_name(e.name or '') for e in unique_emps}
             for pn in set(fuzzy_needed):
+                pn_norm = normalize_name(pn)
                 best_emp, best_score = None, 0
                 for e in unique_emps:
-                    s = fuzzy_score(pn, e.name or '')
-                    if s > best_score:
-                        best_score = s
+                    e_norm = emp_norms[e.id]
+                    if pn_norm == e_norm:
+                        best_emp, best_score = e, 100
+                        break
+                    if pn_norm in e_norm or e_norm in pn_norm:
+                        score = 90
+                    else:
+                        pt = set(pn_norm.split())
+                        et = set(e_norm.split())
+                        if not pt or not et:
+                            continue
+                        score = 100 if pt == et else int((len(pt & et) / max(len(pt), len(et))) * 80)
+                    if score > best_score:
+                        best_score = score
                         best_emp = e
+                        if score >= 90:
+                            break
                 if best_emp and best_score >= 50:
                     all_employees[pn] = best_emp
                     all_employees[' '.join(pn.split()).upper()] = best_emp

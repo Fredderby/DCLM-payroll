@@ -159,11 +159,18 @@
     if (window.updateActiveNavTab) window.updateActiveNavTab();
   }
 
+  var progressTimer = null;
   function showLoading(v) {
+    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     var bar = document.getElementById('nprogress-bar');
-    if (!bar) { bar = document.createElement('div'); bar.id = 'nprogress-bar'; bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:3px;background:#2563eb;z-index:9999;transition:width 0.3s ease,opacity 0.3s ease;'; document.body.appendChild(bar); }
-    if (v) { bar.style.width = '60%'; bar.style.opacity = '1'; }
-    else { bar.style.width = '100%'; setTimeout(function() { bar.style.opacity = '0'; setTimeout(function() { bar.style.width = '0'; }, 300); }, 200); }
+    if (!bar) { bar = document.createElement('div'); bar.id = 'nprogress-bar'; bar.style.cssText = 'position:fixed;top:0;left:0;right:0;height:3px;background:#2563eb;z-index:9999;transition:width 0.4s ease,opacity 0.4s ease;'; document.body.appendChild(bar); }
+    if (v) {
+      bar.style.width = '20%'; bar.style.opacity = '1';
+      progressTimer = setTimeout(function(){ bar.style.width = '50%'; }, 800);
+    } else {
+      bar.style.width = '100%';
+      setTimeout(function() { bar.style.opacity = '0'; setTimeout(function() { bar.style.width = '0'; }, 400); }, 300);
+    }
   }
 
   document.addEventListener('click', function(e) {
