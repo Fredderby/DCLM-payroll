@@ -1346,8 +1346,8 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         total_earnings = float(stats_row.total_earn or 0)
         total_deductions = float(stats_row.total_deduc or 0)
         
-        # Load payslips with a safety cap to prevent excessive memory use
-        payslips = query.order_by(PayrollRecord.employee_name).limit(500).all()
+        # Load payslips ordered by name for display
+        payslips = query.order_by(PayrollRecord.employee_name).all()
         
         # Build employee lookup for the loaded payslips only
         payslip_names = list(set(p.employee_name for p in payslips if p.employee_name))
