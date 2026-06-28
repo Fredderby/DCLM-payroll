@@ -97,7 +97,6 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "",
         'rent_monthly': ['rent_monthly', 'rent_allowance', 'housing_allowance', 'rent'],
         'utility_monthly': ['utility_monthly', 'utility_allowance', 'utilities', 'utility'],
         'transport_monthly': ['transport_monthly', 'transport_allowance', 'transport', 'travel_allowance'],
-        'cola_np': ['cola', 'cost_of_living', 'cola_allowance'],
         # Deductions
         'paye': ['paye', 'tax', 'income_tax', 'tax_paid'],
         'tithe': ['tithe', '10_tithe', 'tithe_10', '10%_tithe'],

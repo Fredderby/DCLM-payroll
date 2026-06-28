@@ -12,7 +12,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 import os
+import logging
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Default SMTP fallback values (Settings from .env takes priority)
 DEFAULT_SMTP_SERVER = "smtp.gmail.com"
@@ -32,6 +35,20 @@ class EmailService:
         username = getattr(settings, "smtp_username", None) or os.getenv("SMTP_USERNAME") or ""
         password = getattr(settings, "smtp_password", None) or os.getenv("SMTP_PASSWORD") or ""
         return server, port, username, password
+
+    @staticmethod
+    async def _send_message(message):
+        """Send a MIME message using SMTP with the configured settings."""
+        server, port, username, password = EmailService._get_smtp_settings()
+        if port == 465:
+            async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True, timeout=30) as smtp:
+                await smtp.login(username, password)
+                await smtp.send_message(message)
+        else:
+            async with aiosmtplib.SMTP(hostname=server, port=port, timeout=30) as smtp:
+                await smtp.starttls()
+                await smtp.login(username, password)
+                await smtp.send_message(message)
 
     @staticmethod
     async def send_payslip(recipient_email: str, employee_name: str, month: str, pdf_path: str, net_salary: float):
@@ -84,16 +101,7 @@ Head of Finance"""
 
             # IMPORTANT: aiosmtplib.SMTP() auto-connects and handles STARTTLS automatically.
             # Do NOT call starttls() manually - it causes "Connection already using TLS" error.
-            if port == 465:
-                # SSL/TLS implicit mode
-                async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True, timeout=30) as smtp:
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
-            else:
-                # STARTTLS mode (port 587): aiosmtplib auto-handles TLS
-                async with aiosmtplib.SMTP(hostname=server, port=port, timeout=30) as smtp:
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
+            await EmailService._send_message(message)
 
             return True, "Email sent successfully"
         except Exception as e:
@@ -113,22 +121,24 @@ Head of Finance"""
 
         results = {"successful": 0, "failed": 0, "errors": []}
 
+        # Build employee + alias lookup dicts ONCE to avoid N+1 queries
+        employees_by_name = {}
+        for e in db_session.query(Employee).all():
+            employees_by_name[e.name] = e
+            employees_by_name[' '.join((e.name or '').split()).upper()] = e
+        aliases_by_name = {}
+        for a in db_session.query(EmployeeAlias).all():
+            aliases_by_name[a.alias_name] = a.employee_id
+            aliases_by_name[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
+
         for payroll in payroll_records:
-            emp = db_session.query(Employee).filter(Employee.name == payroll.employee_name).first()
+            emp = employees_by_name.get(payroll.employee_name)
             if not emp:
-                # Try alias lookup
                 rec_name = (payroll.employee_name or '').strip()
                 rec_name_norm = ' '.join(rec_name.split()).upper()
-                alias = db_session.query(EmployeeAlias).filter(EmployeeAlias.alias_name == rec_name).first()
-                if not alias:
-                    all_aliases = db_session.query(EmployeeAlias).all()
-                    for a in all_aliases:
-                        alias_norm = ' '.join((a.alias_name or '').split()).upper()
-                        if alias_norm == rec_name_norm:
-                            alias = a
-                            break
-                if alias:
-                    emp = db_session.query(Employee).filter(Employee.id == alias.employee_id).first()
+                alias_emp_id = aliases_by_name.get(rec_name) or aliases_by_name.get(rec_name_norm)
+                if alias_emp_id:
+                    emp = db_session.query(Employee).filter(Employee.id == alias_emp_id).first()
             employee_name = emp.name if emp and emp.name else (payroll.employee_name or "Unknown")
             if not emp or not emp.email:
                 results["failed"] += 1
@@ -188,15 +198,7 @@ Head of Finance"""
             message["To"] = test_to
             message["Subject"] = "Test - DCLM Payroll SMTP Configuration"
 
-            if port == 465:
-                async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True) as smtp:
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
-            else:
-                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
-                    await smtp.starttls()
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
+            await EmailService._send_message(message)
 
             return True, "Test email sent successfully!"
         except Exception as e:
@@ -220,15 +222,7 @@ Head of Finance"""
             message["To"] = recipient_email
             message["Subject"] = subject
 
-            if port == 465:
-                async with aiosmtplib.SMTP(hostname=server, port=port, use_tls=True) as smtp:
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
-            else:
-                async with aiosmtplib.SMTP(hostname=server, port=port) as smtp:
-                    await smtp.starttls()
-                    await smtp.login(username, password)
-                    await smtp.send_message(message)
+            await EmailService._send_message(message)
 
             return True, "Notification sent"
         except Exception as e:

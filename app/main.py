@@ -20,7 +20,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
-templates.env.cache = None
+templates.env.cache = 200  # Cache up to 200 compiled templates for performance
 
 import json
 
@@ -181,12 +181,24 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             
             # Recent payslips (last 5) - optimized with eager loading
             recent_payslips = db.query(PayrollRecord).order_by(PayrollRecord.id.desc()).limit(5).all()
-            # Build employee lookup with normalized keys (whitespace-collapsed, uppercased)
-            all_emps_for_dash = db.query(Employee).all()
-            employees = {}
-            for e in all_emps_for_dash:
-                employees[e.name] = e
-                employees[' '.join((e.name or '').split()).upper()] = e
+            # Build employee lookup only for the 5 recent payslip names
+            payslip_names = [p.employee_name for p in recent_payslips if p.employee_name]
+            if payslip_names:
+                all_emps_for_dash = db.query(Employee).filter(Employee.name.in_(payslip_names)).all()
+                # Also fetch any with matching normalized names
+                employees = {}
+                for e in all_emps_for_dash:
+                    employees[e.name] = e
+                    employees[' '.join((e.name or '').split()).upper()] = e
+                # For names that didn't match exactly, try normalized lookup
+                unmatched_names = [n for n in payslip_names if n not in employees]
+                if unmatched_names:
+                    all_emps_for_dash2 = db.query(Employee).all()
+                    for e in all_emps_for_dash2:
+                        employees[e.name] = e
+                        employees[' '.join((e.name or '').split()).upper()] = e
+            else:
+                employees = {}
             for p in recent_payslips:
                 emp_name = (p.employee_name or '').strip()
                 emp = employees.get(emp_name)
@@ -937,7 +949,10 @@ def normalize_name(name):
     name = ' '.join(name.split())
     return name
 def fuzzy_score(name_a, name_b):
-    """Simple fuzzy match score between two normalized names (0-100)."""
+    """Simple fuzzy match score between two normalized names (0-100).
+    Both names are normalized internally; callers that already have normalized
+    versions should pass normalized strings to avoid redundant computation.
+    """
     if not name_a or not name_b:
         return 0
     na = normalize_name(name_a)
@@ -1013,7 +1028,23 @@ def find_best_employee_match(emp_no, emp_name, emp_email, db):
         if e_norm == norm_name:
             return e, True, None
         # 5. Track fuzzy score for suggestion
-        score = fuzzy_score(e.name, emp_name)
+        # Use pre-normalized strings to avoid redundant normalization
+        if e_norm == norm_name:
+            score = 100
+        elif e_norm in norm_name or norm_name in e_norm:
+            score = 90
+        else:
+            tokens_a = set(e_norm.split())
+            tokens_b = set(norm_name.split())
+            if tokens_a and tokens_b:
+                if tokens_a == tokens_b:
+                    score = 95
+                else:
+                    overlap = tokens_a & tokens_b
+                    score = int((len(overlap) / max(len(tokens_a), len(tokens_b))) * 80)
+                    score = max(0, min(score, 99))
+            else:
+                score = 0
         if score > best_score:
             best_score = score
             best_match = e
@@ -1917,14 +1948,18 @@ async def bulk_add_loans(request: Request, db: Session = Depends(get_db)):
         else:
             months_to_pay = 1
         
+        total_receivable_val = loan_amount  # no interest in bulk
         loan = Loan(
             employee_name=name.strip(),
             bank_name=bank_name,
             loan_amount=loan_amount,
             months_to_pay=months_to_pay,
             interest_amount=0,
+            total_receivable=total_receivable_val,
+            monthly_deduction=monthly_deduction,
             amount_paid=0,
             months_paid=0,
+            balance=total_receivable_val,
             status="Active"
         )
         db.add(loan)
@@ -2301,7 +2336,7 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
             headers = ["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"]
             ws.append(headers)
             for r in records:
-                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
+                ws.append([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.pf_eight_percent, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             headers = ["Employee", "Bank", "Bank Number", "Net Salary", "Month"]
             ws.append(headers)
@@ -2338,7 +2373,7 @@ async def generate_report(request: Request, db: Session = Depends(get_db)):
         elif report_type == "deductions":
             writer.writerow(["Employee", "Month", "Category", "SSNIT 5.5%", "PAYE", "Tithe", "Future Savings", "Employee PF", "Other Deductions", "Total Deductions"])
             for r in records:
-                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.other_deductions, r.total_deductions])
+                writer.writerow([r.employee_name, r.month, r.staff_category or "pastoral", r.ssnit_deduction, r.paye, r.tithe, r.future_savings, r.pf_eight_percent, r.other_deductions, r.total_deductions])
         elif report_type == "bank_payments":
             writer.writerow(["Employee", "Bank", "Bank Number", "Net Salary", "Month"])
             for r in records:
