@@ -208,6 +208,29 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
                 self.email = ""
         employee = PlaceholderEmployee(payroll.employee_name)
 
+    # Recalculate totals from individual fields so PF 8% is always included
+    from app.services.payroll_service import calculate_payroll_totals
+    pdf_earnings_dict = {
+        'basic_salary': payroll.basic_salary,
+        'meals_monthly': payroll.meals_monthly,
+        'responsibility_allowance': payroll.responsibility_allowance,
+        'cola': payroll.cola,
+        'leave_allowance': payroll.leave_allowance,
+        'other_earnings': payroll.other_earnings,
+        'rent_monthly': payroll.rent_monthly,
+        'utility_monthly': payroll.utility_monthly,
+        'transport_monthly': payroll.transport_monthly,
+    }
+    pdf_deductions_dict = {
+        'paye': payroll.paye,
+        'tithe': payroll.tithe,
+        'future_savings': payroll.future_savings,
+        'other_deductions': payroll.other_deductions,
+        'ssnit_deduction': payroll.ssnit_deduction,
+        'pf_eight_percent': payroll.pf_eight_percent,
+    }
+    pdf_computed_earnings, pdf_computed_deductions, pdf_computed_net = calculate_payroll_totals(pdf_earnings_dict, pdf_deductions_dict)
+
     month_display = _format_month(payroll.month)
     logo_path = os.path.join("static", "img", "logo.jpg") if os.path.exists(os.path.join("static", "img", "logo.jpg")) else os.path.join("static", "logo.jpg")
 
@@ -379,7 +402,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         if float(payroll.other_deductions or 0) > 0:
             rows.append([Paragraph("Other Deductions", tl), v(None), v(payroll.other_deductions)])
 
-    rows.append([Paragraph("TOTAL", tbl), vb(payroll.total_earnings), vb(payroll.total_deductions)])
+    rows.append([Paragraph("TOTAL", tbl), vb(pdf_computed_earnings), vb(pdf_computed_deductions)])
 
     cw = [PW*0.40, PW*0.30, PW*0.30]
     mt = Table(rows, colWidths=cw)
@@ -405,7 +428,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     elements.append(Spacer(1, 0.12*inch))
 
     # ═══════════ NET SALARY BOX ═══════════
-    words_str = amount_to_words(payroll.net_salary)
+    words_str = amount_to_words(pdf_computed_net)
 
     nsl = ParagraphStyle('nsl', fontSize=9, fontName='Helvetica-Bold',
                           textColor=colors.HexColor("#065f46"), alignment=TA_LEFT)
@@ -415,7 +438,7 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
                           textColor=colors.HexColor("#166534"), alignment=TA_LEFT)
 
     net = Table([
-        [Paragraph("<b>NET SALARY</b>", nsl), Paragraph(f"GHS {payroll.net_salary:,.2f}", nsv)],
+        [Paragraph("<b>NET SALARY</b>", nsl), Paragraph(f"GHS {pdf_computed_net:,.2f}", nsv)],
         [Paragraph(words_str, nsw), Paragraph("", tl)],
     ], colWidths=[PW*0.50, PW*0.50])
     net.setStyle(TableStyle([

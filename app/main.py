@@ -1550,17 +1550,40 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
                     "months_remaining": months_remaining
                 })
         
-        # Net salary in words
-        net_words = ""
-        if payroll.net_salary:
-            try:
-                from app.services.payroll_service import number_to_words
-                net_words = number_to_words(payroll.net_salary)
-            except Exception:
-                net_words = ""
-
         # Determine staff category for component segregation
         staff_category = payroll.staff_category or "pastoral"
+        
+        # Recalculate totals from individual fields so PF 8% is always included
+        from app.services.payroll_service import calculate_payroll_totals
+        earnings_dict = {
+            'basic_salary': payroll.basic_salary,
+            'meals_monthly': payroll.meals_monthly,
+            'responsibility_allowance': payroll.responsibility_allowance,
+            'cola': payroll.cola,
+            'leave_allowance': payroll.leave_allowance,
+            'other_earnings': payroll.other_earnings,
+            'rent_monthly': payroll.rent_monthly,
+            'utility_monthly': payroll.utility_monthly,
+            'transport_monthly': payroll.transport_monthly,
+        }
+        deductions_dict = {
+            'paye': payroll.paye,
+            'tithe': payroll.tithe,
+            'future_savings': payroll.future_savings,
+            'other_deductions': payroll.other_deductions,
+            'ssnit_deduction': payroll.ssnit_deduction,
+            'pf_eight_percent': payroll.pf_eight_percent,
+        }
+        computed_earnings, computed_deductions, computed_net = calculate_payroll_totals(earnings_dict, deductions_dict)
+        
+        # Net salary in words (uses recalculated net)
+        net_words = ""
+        if computed_net:
+            try:
+                from app.services.payroll_service import number_to_words
+                net_words = number_to_words(computed_net)
+            except Exception:
+                net_words = ""
         
         return {
             "id": payroll.id,
@@ -1582,7 +1605,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             "cola": float(payroll.cola or 0),
             "leave_allowance": float(payroll.leave_allowance or 0),
             "other_earnings": float(payroll.other_earnings or 0),
-            "total_earnings": float(payroll.total_earnings or 0),
+            "total_earnings": computed_earnings,
             "rent_monthly": float(payroll.rent_monthly or 0),
             "utility_monthly": float(payroll.utility_monthly or 0),
             "transport_monthly": float(payroll.transport_monthly or 0),
@@ -1592,8 +1615,8 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             "other_deductions": float(payroll.other_deductions or 0),
             "ssnit_deduction": float(payroll.ssnit_deduction or 0),
             "pf_eight_percent": float(payroll.pf_eight_percent or 0),
-            "total_deductions": float(payroll.total_deductions or 0),
-            "net_salary": float(payroll.net_salary or 0),
+            "total_deductions": computed_deductions,
+            "net_salary": computed_net,
             "staff_category": staff_category,
             "pdf_generated": bool(payroll.pdf_generated) if hasattr(payroll, 'pdf_generated') else False,
             "loans": loans_data,
