@@ -1511,6 +1511,17 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             ).first()
             if alias:
                 employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
+        if not employee:
+            # Fuzzy fallback for name variations
+            all_emps = db.query(Employee).all()
+            best_emp, best_score = None, 0
+            for e in all_emps:
+                s = fuzzy_score(emp_name, e.name or '')
+                if s > best_score:
+                    best_score = s
+                    best_emp = e
+            if best_emp and best_score >= 50:
+                employee = best_emp
         
         emp_data = {
             "name": employee.name if employee else payroll.employee_name or "Unknown",

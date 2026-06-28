@@ -181,6 +181,18 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
         if alias:
             employee = db.query(Employee).filter(Employee.id == alias.employee_id).first()
     if not employee:
+        # Fuzzy fallback for name variations
+        from app.main import fuzzy_score
+        all_emps = db.query(Employee).all()
+        best_emp, best_score = None, 0
+        for e in all_emps:
+            s = fuzzy_score(rec_name, e.name or '')
+            if s > best_score:
+                best_score = s
+                best_emp = e
+        if best_emp and best_score >= 50:
+            employee = best_emp
+    if not employee:
         class PlaceholderEmployee:
             def __init__(self, name):
                 self.name = name
