@@ -20,7 +20,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
-templates.env.cache = 200  # Cache up to 200 compiled templates for performance
+# Let Jinja2 use its default LRU cache (400 entries) for performance
 
 import json
 
