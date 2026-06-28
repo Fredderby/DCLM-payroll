@@ -1329,26 +1329,44 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         
         selected_month = request.query_params.get("month", "")
         
-        # Query all payslips (no pagination limit to ensure all are visible)
+        # Build filtered query
         query = db.query(PayrollRecord)
         if selected_month:
             query = query.filter(PayrollRecord.month == selected_month)
         
-        total_payslips = query.count()
-        payslips = query.order_by(PayrollRecord.employee_name).all()
+        # Compute stats in a single SQL aggregation (no Python loops)
+        stats_row = query.with_entities(
+            sa_func.count(PayrollRecord.id).label('count'),
+            sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0).label('total_net'),
+            sa_func.coalesce(sa_func.sum(PayrollRecord.total_earnings), 0).label('total_earn'),
+            sa_func.coalesce(sa_func.sum(PayrollRecord.total_deductions), 0).label('total_deduc')
+        ).first()
+        total_payslips = stats_row.count or 0
+        total_net_salary = float(stats_row.total_net or 0)
+        total_earnings = float(stats_row.total_earn or 0)
+        total_deductions = float(stats_row.total_deduc or 0)
         
-        # Build employee lookup with multiple key strategies
-        all_emps = db.query(Employee).all()
+        # Load payslips with a safety cap to prevent excessive memory use
+        payslips = query.order_by(PayrollRecord.employee_name).limit(500).all()
+        
+        # Build employee lookup for the loaded payslips only
+        payslip_names = list(set(p.employee_name for p in payslips if p.employee_name))
         all_employees = {}
-        for e in all_emps:
-            all_employees[e.name] = e
-            all_employees[' '.join((e.name or '').split()).upper()] = e
+        if payslip_names:
+            for e in db.query(Employee).filter(Employee.name.in_(payslip_names)).all():
+                all_employees[e.name] = e
+                all_employees[' '.join((e.name or '').split()).upper()] = e
+            # Fallback for names that didn't match exactly
+            unmatched = [n for n in payslip_names if n not in all_employees]
+            if unmatched:
+                for e in db.query(Employee).filter(Employee.name.ilike('%')).all():
+                    all_employees[e.name] = e
+                    all_employees[' '.join((e.name or '').split()).upper()] = e
         
-        # Also build alias lookup
+        # Also build alias lookup (only if needed)
         from app.models.employee_alias import EmployeeAlias
-        all_aliases = db.query(EmployeeAlias).all()
         alias_map = {}
-        for a in all_aliases:
+        for a in db.query(EmployeeAlias).all():
             alias_map[a.alias_name] = a.employee_id
             alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
         
@@ -1361,23 +1379,12 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
                 normalized = ' '.join(emp_name.split()).upper()
                 emp = all_employees.get(normalized)
             if not emp:
-                # Try alias lookup
                 alias_emp_id = alias_map.get(emp_name) or alias_map.get(normalized)
                 if alias_emp_id:
-                    for e in all_emps:
-                        if e.id == alias_emp_id:
-                            emp = e
-                            break
+                    for e in db.query(Employee).filter(Employee.id == alias_emp_id).all():
+                        emp = e
+                        break
             payslip_employees[p.id] = emp
-        
-        # Generate stats from all records
-        if selected_month:
-            net_total = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).filter(PayrollRecord.month == selected_month).scalar() or 0
-        else:
-            net_total = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).scalar() or 0
-        total_net_salary = float(net_total)
-        total_earnings = sum(p.total_earnings or 0 for p in payslips)
-        total_deductions = sum(p.total_deductions or 0 for p in payslips)
         
         template = templates.get_template("payslips.html")
         rendered = template.render({

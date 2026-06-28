@@ -69,8 +69,12 @@
       runSpaHooks();
       return;
     }
-    fetch(fullUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    // 30-second timeout to prevent endless spinner on slow pages
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
+    fetch(fullUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, signal: controller.signal })
     .then(function(res) {
+      clearTimeout(timeoutId);
       if (!res.ok) { window.location.href = fullUrl; throw new Error('Fetch failed'); }
       return res.text();
     })
@@ -83,7 +87,12 @@
       isLoading = false;
       showLoading(false);
     })
-    .catch(function() { isLoading = false; showLoading(false); });
+    .catch(function() {
+      clearTimeout(timeoutId);
+      isLoading = false;
+      showLoading(false);
+      if (window.DCLMToast) window.DCLMToast.error('Page Load Error','The page took too long to respond. Please try refreshing the page.');
+    });
   };
 
   function applyContent(html, url) {
