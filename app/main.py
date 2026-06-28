@@ -512,6 +512,15 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         db.flush()
                         employee = new_employee
                         logger.info(f"Created new employee record for '{emp_name}' ({emp_no})")
+                        # Create payroll record for newly created employee
+                        try:
+                            payroll_record = create_payroll_record(db, employee, record)
+                            db.commit()
+                            processed += 1
+                        except Exception as e2:
+                            db.rollback()
+                            errors.append(f"Error creating payroll for {emp_name}: {str(e2)[:80]}")
+                        continue
                     except Exception as emp_error:
                         logger.error(f"Failed to create employee for unmatched {emp_name}: {str(emp_error)[:80]}")
                         # Determine reason
@@ -1369,6 +1378,24 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         for a in db.query(EmployeeAlias).all():
             alias_map[a.alias_name] = a.employee_id
             alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
+        
+        # Fuzzy matching fallback for payslip names still unmatched
+        fuzzy_needed = [n for n in payslip_names
+                        if n not in all_employees
+                        and ' '.join(n.split()).upper() not in all_employees
+                        and not (alias_map.get(n) or alias_map.get(' '.join(n.split()).upper()))]
+        if fuzzy_needed and all_employees:
+            unique_emps = {e.id: e for e in all_employees.values()}.values()
+            for pn in set(fuzzy_needed):
+                best_emp, best_score = None, 0
+                for e in unique_emps:
+                    s = fuzzy_score(pn, e.name or '')
+                    if s > best_score:
+                        best_score = s
+                        best_emp = e
+                if best_emp and best_score >= 50:
+                    all_employees[pn] = best_emp
+                    all_employees[' '.join(pn.split()).upper()] = best_emp
         
         # Build employee lookup dict for payslips
         payslip_employees = {}
