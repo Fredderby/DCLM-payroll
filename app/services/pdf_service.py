@@ -452,11 +452,26 @@ def generate_payslip_pdf(db: Session, payroll_id: int,
     elements.append(Spacer(1, 0.12*inch))
 
     # ═══════════ LOAN TABLE ═══════════
-    loans = db.query(Loan).filter(Loan.employee_name == employee.name, Loan.status != "Completed").all()
-    if not loans:
-        norm_emp = ' '.join(employee.name.split()).upper()
+    loan_candidates = set()
+    if employee:
+        loan_candidates.add(employee.name)
+        if hasattr(employee, 'id') and employee.id:
+            from app.models.employee_alias import EmployeeAlias
+            emp_aliases = db.query(EmployeeAlias).filter(EmployeeAlias.employee_id == employee.id).all()
+            for a in emp_aliases:
+                if a.alias_name:
+                    loan_candidates.add(a.alias_name.strip())
+    if payroll.employee_name:
+        loan_candidates.add(payroll.employee_name.strip())
+    loans = []
+    for ln in loan_candidates:
+        loans = db.query(Loan).filter(Loan.employee_name == ln, Loan.status != "Completed").all()
+        if loans:
+            break
+    if not loans and loan_candidates:
+        norm_set = set(' '.join(n.split()).upper() for n in loan_candidates if n)
         all_loans = db.query(Loan).filter(Loan.status != "Completed").all()
-        loans = [l for l in all_loans if ' '.join((l.employee_name or '').split()).upper() == norm_emp]
+        loans = [l for l in all_loans if ' '.join((l.employee_name or '').split()).upper() in norm_set]
     if loans:
         loan_title = ParagraphStyle('lt', fontSize=8, fontName='Helvetica-Bold',
                                      textColor=DEEP_BLUE, alignment=TA_LEFT)

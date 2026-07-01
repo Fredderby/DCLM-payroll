@@ -1694,14 +1694,27 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             "ssnit_number": employee.ssnit_number if employee else "",
             }
 
-        # Fetch loans for this employee (matched by name with fallback)
+        # Fetch loans — try Employee name, aliases, and raw payroll name
         loans_data = []
-        if employee and employee.name:
-            loan_records = db.query(Loan).filter(Loan.employee_name == employee.name, Loan.status != "Completed").all()
+        loan_candidates = set()
+        if employee:
+            loan_candidates.add(employee.name)
+            emp_aliases = db.query(EmployeeAlias).filter(EmployeeAlias.employee_id == employee.id).all()
+            for a in emp_aliases:
+                if a.alias_name:
+                    loan_candidates.add(a.alias_name.strip())
+        if payroll.employee_name:
+            loan_candidates.add(payroll.employee_name.strip())
+        if loan_candidates:
+            loan_records = []
+            for ln in loan_candidates:
+                loan_records = db.query(Loan).filter(Loan.employee_name == ln, Loan.status != "Completed").all()
+                if loan_records:
+                    break
             if not loan_records:
-                norm_emp = ' '.join(employee.name.split()).upper()
-                loan_records = db.query(Loan).filter(Loan.status != "Completed").all()
-                loan_records = [l for l in loan_records if ' '.join((l.employee_name or '').split()).upper() == norm_emp]
+                norm_set = set(' '.join(n.split()).upper() for n in loan_candidates if n)
+                all_loans = db.query(Loan).filter(Loan.status != "Completed").all()
+                loan_records = [l for l in all_loans if ' '.join((l.employee_name or '').split()).upper() in norm_set]
             for loan in loan_records:
                 months_remaining = max(0, (loan.months_to_pay or 1) - (loan.months_paid or 0))
                 loans_data.append({
