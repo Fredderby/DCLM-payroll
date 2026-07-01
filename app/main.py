@@ -1744,7 +1744,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
         return {
             "id": payroll.id,
             "month": payroll.month,
-            "employee_name": payroll.employee_name or "N/A",
+            "employee_name": emp_data.get("name", payroll.employee_name) or "N/A",
             "employee_number": emp_data.get("employee_number", "N/A"),
             "email": emp_data.get("email", ""),
             "designation": emp_data.get("designation", ""),

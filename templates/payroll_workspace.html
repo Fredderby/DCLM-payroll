@@ -19,10 +19,6 @@
 .content-wrapper{overflow-x:hidden!important}
 *{box-sizing:border-box}
 
-/* ── Workspace Card ── */
-.ws-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);overflow:hidden}
-.ws-card-body{padding:20px}
-
 /* ── Stats Bar ── */
 .ws-stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .ws-stat{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13px}
@@ -67,8 +63,21 @@
 .ws-pct-bar .pct-toggle:hover{background:#eff6ff;border-color:#2563eb}
 .ws-hidden{display:none!important}
 
-/* ── Table Scroll ── */
-.ws-scroll-wrap{overflow-x:auto;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.04);background:#fff;max-height:calc(100vh - 300px)}
+/* ── Workspace fills remaining viewport ── */
+.ws-card{display:flex;flex-direction:column;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);overflow:hidden;min-height:0}
+.ws-card-body{display:flex;flex-direction:column;flex:1;padding:20px;min-height:0}
+/* ── Table Scroll — fills all remaining vertical space ── */
+.ws-scroll-wrap{flex:1;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.04);background:#fff;min-height:200px;position:relative}
+.ws-scroll-wrap::-webkit-scrollbar{width:8px;height:8px}
+.ws-scroll-wrap::-webkit-scrollbar-track{background:transparent}
+.ws-scroll-wrap::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+.ws-scroll-wrap::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+.ws-scroll-wrap::-webkit-scrollbar-corner{background:transparent}
+/* ── Scroll fade ── */
+.ws-scroll-wrap::after{content:'';position:sticky;display:block;float:right;top:0;right:0;width:40px;height:100%;background:linear-gradient(to right,transparent,rgba(0,0,0,0.04));pointer-events:none;margin-top:-100%}
+.ws-scroll-indicator{position:absolute;right:12px;bottom:12px;background:#2563eb;color:#fff;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;pointer-events:none;animation:fadeInUp .5s ease;box-shadow:0 2px 8px rgba(37,99,235,0.3);z-index:5;display:flex;align-items:center;gap:6px;opacity:0;transition:opacity .4s}
+.ws-scroll-indicator.show{opacity:1}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .ws-table-wrap{min-width:1800px;display:inline-block}
 
 /* ── Table ── */
@@ -318,11 +327,15 @@
 {% block extra_scripts %}
 <script>
 (function(){
+  'use strict';
   var payeLock = {};
 
+  // ─── Utilities ───
   function n(v){ try{return parseFloat((''+v).replace(/,/g,''))||0}catch(e){return 0} }
   function f(v){ return n(v).toFixed(2); }
+  function norm(s){ return (s||'').trim().replace(/\s+/g,' ').toUpperCase(); }
 
+  // ─── Row category change ───
   function applyCat(tr){
     var sel = tr.querySelector('.ws-cat');
     if(!sel) return;
@@ -332,6 +345,7 @@
     calcAll();
   }
 
+  // ─── Calculate single row ───
   function calcRow(tr){
     var cat = tr.getAttribute('data-cat') || 'pastoral';
     var earns = tr.querySelectorAll('.earn');
@@ -347,7 +361,7 @@
     if(si) si.value = f(ss);
     if(pi) pi.value = f(pf);
     var payeI = tr.querySelector('[data-field="paye"]');
-    var rk = (tr.getAttribute('data-name') || '');
+    var rk = norm(tr.getAttribute('data-name'));
     if(!payeLock[rk] && payeI){
       var ti = te - ss - pf;
       if(ti < 0) ti = 0;
@@ -376,6 +390,7 @@
     return {te:te, td:td, net:net};
   }
 
+  // ─── Calculate all visible rows + grand totals ───
   function calcAll(){
     var gt = {te:0, td:0, net:0};
     var allRows = document.querySelectorAll('#wsBody tr');
@@ -395,6 +410,7 @@
     if(elN) elN.textContent = 'GHS ' + f(gt.net);
   }
 
+  // ─── Search + filter ───
   var searchQ = '';
   var filterCat = 'all';
 
@@ -411,25 +427,13 @@
       tr.style.display = match ? '' : 'none';
       if(match) vis++;
     }
-    // Toggle table view class for column visibility
     if(table){
       table.className = 'ws-table' + (filterCat !== 'all' ? ' ws-view-' + filterCat : '');
     }
     var el = document.getElementById('wsShowCount');
     if(el) el.textContent = vis + ' of ' + rows.length;
     calcAll();
-    // Update scroll indicator
-    var wrap = document.querySelector('.ws-scroll-wrap');
-    if(wrap){
-      var si = wrap.querySelector('.ws-scroll-indicator');
-      if(!si){
-        si = document.createElement('div');
-        si.className = 'ws-scroll-indicator';
-        si.innerHTML = '<i class="fas fa-chevron-right"></i> Scroll for more';
-        wrap.appendChild(si);
-      }
-      si.style.display = wrap.scrollWidth > wrap.clientWidth ? '' : 'none';
-    }
+    updateScrollIndicator();
   }
 
   document.getElementById('wsSearch').addEventListener('input', function(){
@@ -445,7 +449,6 @@
     }
     var label = document.getElementById('wsViewLabel');
     if(label) label.textContent = cat === 'all' ? 'All Staff' : (cat === 'pastoral' ? 'Pastoral' : 'Non-Pastoral');
-    // Show/hide percentage bar groups based on filter
     document.querySelectorAll('.pct-group').forEach(function(g){
       g.style.display = (cat === 'all' || g.classList.contains(cat)) ? '' : 'none';
     });
@@ -459,6 +462,7 @@
     })(filterBtns[fi]);
   }
 
+  // ─── Percentage apply ───
   function applyPctToRow(tr){
     var cat = tr.getAttribute('data-cat') || 'pastoral';
     var bs = n(tr.querySelector('[data-field="basic_salary"]').value);
@@ -488,32 +492,31 @@
 
   document.getElementById('pctApplyBtn').addEventListener('click', applyPctToVisible);
 
+  // ─── Live input events ───
   document.addEventListener('input', function(e){
     if(e.target.classList.contains('wf') && e.target.getAttribute('data-field') === 'basic_salary'){
       var tr = e.target.closest('tr');
       if(tr) applyPctToRow(tr);
     }
   });
-
   document.addEventListener('input', function(e){
     if(e.target.classList.contains('wf')) calcAll();
   });
-
   document.addEventListener('blur', function(e){
     if(e.target.classList.contains('wf') && e.target.value && !isNaN(e.target.value))
       e.target.value = n(e.target.value).toFixed(2);
   }, true);
-
   document.addEventListener('change', function(e){
     if(e.target.classList.contains('ws-cat')) applyCat(e.target.closest('tr'));
   });
 
+  // ─── PAYE lock ───
   document.addEventListener('click', function(e){
     var btn = e.target.closest('.ws-paye-lock');
     if(!btn) return;
     var inp = btn.parentNode.querySelector('.paye-input');
     var tr = btn.closest('tr');
-    var rk = tr ? (tr.getAttribute('data-name') || '') : '';
+    var rk = tr ? norm(tr.getAttribute('data-name')) : '';
     if(!inp || !tr) return;
     payeLock[rk] = !payeLock[rk];
     inp.readOnly = !payeLock[rk];
@@ -524,32 +527,47 @@
     if(!payeLock[rk]) calcAll();
   });
 
+  // ─── Populate rows from API data (used by loadMonth & copyPrev) ───
+  function populateFromRecords(records){
+    // Build normalized map: key = norm(employee_name)
+    var map = {};
+    (records||[]).forEach(function(p){
+      map[norm(p.employee_name)] = p;
+    });
+    var count = 0;
+    document.querySelectorAll('#wsBody tr').forEach(function(tr){
+      var nm = norm(tr.getAttribute('data-name'));
+      var p = map[nm];
+      if(!p) return;
+      count++;
+      if(p.staff_category){
+        var sel = tr.querySelector('.ws-cat');
+        if(sel){ sel.value = p.staff_category; applyCat(tr); }
+      }
+      tr.querySelectorAll('.wf').forEach(function(inp){
+        var k = inp.dataset.field;
+        if(!k || inp.classList.contains('ws-cat')) return;
+        var val = p[k];
+        inp.value = (val !== undefined && val !== null) ? f(val) : '';
+      });
+      calcRow(tr);
+    });
+    calcAll();
+    return count;
+  }
+
+  // ─── Load Month ───
   function loadMonth(){
     var m = document.getElementById('monthSelect').value;
+    if(!m) return;
     if(window.showLoading) showLoading('Loading ' + m + '...');
     fetch('/payslips/search?month=' + encodeURIComponent(m) + '&limit=9999')
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(window.hideLoading) hideLoading();
-      var map = {};
-      (d.records || []).forEach(function(p){ map[p.employee_name] = p; });
-      document.querySelectorAll('#wsBody tr').forEach(function(tr){
-        var nm = tr.getAttribute('data-name');
-        var p = map[nm] || {};
-        if(p.staff_category){
-          var sel = tr.querySelector('.ws-cat');
-          if(sel){ sel.value = p.staff_category; applyCat(tr); }
-        }
-        tr.querySelectorAll('.wf').forEach(function(inp){
-          var k = inp.dataset.field;
-          if(!k || inp.classList.contains('ws-cat')) return;
-          var val = p[k];
-          inp.value = (val !== undefined && val !== null) ? f(val) : '';
-        });
-        calcRow(tr);
-      });
-      calcAll();
-      if(window.DCLMToast) DCLMToast.info('Loaded', Object.keys(map).length + ' records');
+      var cnt = populateFromRecords(d.records);
+      var msg = cnt + ' records loaded from ' + m;
+      if(window.DCLMToast) DCLMToast[cnt ? 'info' : 'warning']('Loaded', cnt ? msg : 'No records found for ' + m);
     })
     .catch(function(err){
       if(window.hideLoading) hideLoading();
@@ -558,9 +576,10 @@
   }
   document.getElementById('loadMonthBtn').addEventListener('click', loadMonth);
 
+  // ─── Copy Previous Month ───
   function getPrevMonth(monthStr){
     var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    var parts = monthStr.split(' ');
+    var parts = (monthStr||'').split(' ');
     if(parts.length < 2) return '';
     var mIdx = months.indexOf(parts[0]);
     var yr = parseInt(parts[1], 10);
@@ -579,28 +598,8 @@
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(window.hideLoading) hideLoading();
-      var map = {};
-      (d.records || []).forEach(function(p){ map[p.employee_name] = p; });
-      var count = 0;
-      document.querySelectorAll('#wsBody tr').forEach(function(tr){
-        var nm = tr.getAttribute('data-name');
-        var p = map[nm];
-        if(!p) return;
-        count++;
-        if(p.staff_category){
-          var sel = tr.querySelector('.ws-cat');
-          if(sel){ sel.value = p.staff_category; applyCat(tr); }
-        }
-        tr.querySelectorAll('.wf').forEach(function(inp){
-          var k = inp.dataset.field;
-          if(!k || inp.classList.contains('ws-cat')) return;
-          var val = p[k];
-          inp.value = (val !== undefined && val !== null) ? f(val) : '';
-        });
-        calcRow(tr);
-      });
-      calcAll();
-      if(window.DCLMToast) DCLMToast.success('Copied', count + ' records from ' + prevM);
+      var cnt = populateFromRecords(d.records);
+      if(window.DCLMToast) DCLMToast[cnt ? 'success' : 'warning']('Copied', cnt ? cnt + ' records from ' + prevM : 'No records found in ' + prevM);
     })
     .catch(function(err){
       if(window.hideLoading) hideLoading();
@@ -608,6 +607,7 @@
     });
   });
 
+  // ─── Save All ───
   function saveAll(){
     var m = document.getElementById('monthSelect').value;
     var rows = [];
@@ -653,6 +653,7 @@
   }
   document.getElementById('saveAllBtn').addEventListener('click', saveAll);
 
+  // ─── Month select change ───
   document.getElementById('monthSelect').addEventListener('change', function(){
     try{ localStorage.setItem('ws_month', this.value); }catch(e){}
     loadMonth();
@@ -686,21 +687,36 @@
     }
   }catch(e){}
 
-  function checkScroll(){
+  // ─── Scroll indicator ───
+  function updateScrollIndicator(){
     var wrap = document.querySelector('.ws-scroll-wrap');
     if(!wrap) return;
-    wrap.classList.toggle('is-scrollable', wrap.scrollWidth > wrap.clientWidth);
     var si = wrap.querySelector('.ws-scroll-indicator');
-    if(si) si.style.display = wrap.scrollWidth > wrap.clientWidth ? '' : 'none';
+    if(!si){
+      si = document.createElement('div');
+      si.className = 'ws-scroll-indicator';
+      si.innerHTML = '<i class="fas fa-chevron-right"></i> Scroll for more';
+      wrap.appendChild(si);
+    }
+    var hasH = wrap.scrollWidth > wrap.clientWidth;
+    var hasV = wrap.scrollHeight > wrap.clientHeight;
+    var isAtRight = (wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 10);
+    si.classList.toggle('show', (hasH && !isAtRight) || hasV);
+    si.innerHTML = hasH && !isAtRight
+      ? '<i class="fas fa-arrow-right"></i> Scroll'
+      : hasV ? '<i class="fas fa-arrow-down"></i> Scroll' : '';
   }
-  window.addEventListener('resize', checkScroll);
-  var origLoad = loadMonth;
-  loadMonth = function(){
-    var result = origLoad.apply(this, arguments);
-    setTimeout(checkScroll, 300);
-    return result;
-  };
-  try{ calcAll(); applyFilter(); setTimeout(function(){ loadMonth(); checkScroll(); }, 50); }catch(e){}
+
+  var sw = document.querySelector('.ws-scroll-wrap');
+  if(sw){
+    sw.addEventListener('scroll', updateScrollIndicator);
+  }
+  window.addEventListener('resize', updateScrollIndicator);
+
+  // ─── Init ───
+  calcAll();
+  applyFilter();
+  setTimeout(function(){ loadMonth(); updateScrollIndicator(); }, 100);
 })();
 </script>
 {% endblock %}
