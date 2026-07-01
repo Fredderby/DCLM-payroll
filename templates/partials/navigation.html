@@ -74,14 +74,22 @@
   <!-- Footer with user info and logout -->
   <div class="sidebar-footer">
     {% if user %}
-    <div class="sidebar-user" style="padding: 8px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px;">
+    <a href="/profile" class="sidebar-user" style="padding: 8px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .15s;text-decoration:none;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
       <div class="sidebar-user-avatar" style="width: 32px; height: 32px; font-size: 14px;">{{ user.first_name[:1]|upper if user.first_name else 'U' }}{{ user.last_name[:1]|upper if user.last_name else 'U' }}</div>
       <div class="sidebar-user-info">
         <div class="sidebar-user-name" style="font-size: 13px;">{{ user.first_name or 'User' }} {{ user.last_name or '' }}</div>
         <div class="sidebar-user-role" style="font-size: 10px;">{{ user.role or 'Staff' }}</div>
       </div>
-    </div>
+    </a>
     {% endif %}
+    <a href="/profile" class="nav-item" data-nav-link data-icon="user">
+      <span class="nav-icon"><i class="fas fa-user-circle"></i></span>
+      <span class="nav-label">My Profile</span>
+    </a>
+    <div class="nav-item" id="darkModeToggle" style="cursor:pointer;">
+      <span class="nav-icon"><i class="fas fa-moon" id="darkModeIcon"></i></span>
+      <span class="nav-label" id="darkModeLabel">Dark Mode</span>
+    </div>
     <a href="/logout" class="nav-item logout-item" id="logout-btn">
       <span class="nav-icon"><i class="fas fa-sign-out-alt"></i></span>
       <span class="nav-label">Logout</span>
@@ -144,5 +152,37 @@
         link.classList.remove('active');
       }
     });
+
+    // Dark mode init
+    try {
+      var dm = localStorage.getItem('dclm_dark');
+      if (dm === 'true') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        var di = document.getElementById('darkModeIcon');
+        var dl = document.getElementById('darkModeLabel');
+        if (di) di.className = 'fas fa-sun';
+        if (dl) dl.textContent = 'Light Mode';
+      }
+    } catch(e) {}
+
+    // Dark mode toggle click
+    var dmt = document.getElementById('darkModeToggle');
+    if (dmt) {
+      dmt.onclick = function(){
+        var html = document.documentElement;
+        var isDark = html.getAttribute('data-theme') === 'dark';
+        if (isDark) {
+          html.removeAttribute('data-theme');
+          try { localStorage.setItem('dclm_dark', 'false'); } catch(e) {}
+        } else {
+          html.setAttribute('data-theme', 'dark');
+          try { localStorage.setItem('dclm_dark', 'true'); } catch(e) {}
+        }
+        var di = document.getElementById('darkModeIcon');
+        var dl = document.getElementById('darkModeLabel');
+        if (di) di.className = isDark ? 'fas fa-moon' : 'fas fa-sun';
+        if (dl) dl.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+      };
+    }
   })();
 </script>

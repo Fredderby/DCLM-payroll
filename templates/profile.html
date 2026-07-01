@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}My Profile - DCLM Payroll{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block page_subtitle %}Manage your account settings{% endblock %}
+
+{% block content %}
+<style>
+.profile-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);overflow:hidden;margin-bottom:20px}
+.profile-card-header{padding:18px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:12px}
+.profile-card-header h5{margin:0;font-size:15px;font-weight:700;color:#0f172a}
+.profile-card-body{padding:24px}
+.profile-avatar{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#1e40af);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;flex-shrink:0}
+.profile-info{flex:1}
+.profile-info h4{margin:0;font-size:18px;font-weight:700;color:#0f172a}
+.profile-info .text-muted{color:#64748b;font-size:13px}
+.profile-details{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.profile-detail-item{}
+.profile-detail-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:#64748b;margin-bottom:2px}
+.profile-detail-value{font-size:14px;color:#0f172a;font-weight:500}
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:13px;font-weight:600;color:#0f172a;margin-bottom:6px}
+.form-group input{width:100%;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s}
+.form-group input:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+.pw-hint{font-size:12px;color:#64748b;margin-top:4px}
+</style>
+
+<div class="profile-card">
+  <div class="profile-card-body">
+    <div style="display:flex;align-items:center;gap:20px;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #e2e8f0;">
+      <div class="profile-avatar">{{ (user.first_name[:1] if user.first_name else 'U')|upper }}{{ (user.last_name[:1] if user.last_name else 'U')|upper }}</div>
+      <div class="profile-info">
+        <h4>{{ user.first_name or 'User' }} {{ user.last_name or '' }}</h4>
+        <div class="text-muted">{{ user.email }}</div>
+        <span class="badge badge-info" style="margin-top:6px;">{{ user.role or 'Staff' }}</span>
+      </div>
+    </div>
+
+    <div class="profile-details" style="margin-bottom:24px;">
+      <div class="profile-detail-item">
+        <div class="profile-detail-label">First Name</div>
+        <div class="profile-detail-value">{{ user.first_name or '—' }}</div>
+      </div>
+      <div class="profile-detail-item">
+        <div class="profile-detail-label">Last Name</div>
+        <div class="profile-detail-value">{{ user.last_name or '—' }}</div>
+      </div>
+      <div class="profile-detail-item">
+        <div class="profile-detail-label">Email</div>
+        <div class="profile-detail-value">{{ user.email }}</div>
+      </div>
+      <div class="profile-detail-item">
+        <div class="profile-detail-label">Role</div>
+        <div class="profile-detail-value" style="text-transform:capitalize;">{{ user.role or 'Staff' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="profile-card">
+  <div class="profile-card-header">
+    <i class="fas fa-lock" style="color:#2563eb;font-size:16px;"></i>
+    <h5>Change Password</h5>
+  </div>
+  <div class="profile-card-body">
+    {% if success %}
+    <div class="alert alert-success" style="padding:12px 16px;border-radius:8px;background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px;">
+      <i class="fas fa-check-circle"></i> {{ success }}
+    </div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-danger" style="padding:12px 16px;border-radius:8px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;margin-bottom:16px;font-size:13px;display:flex;align-items:center;gap:8px;">
+      <i class="fas fa-exclamation-circle"></i> {{ error }}
+    </div>
+    {% endif %}
+    <form method="post" action="/profile" onsubmit="return validatePasswordForm()">
+      <div class="form-group">
+        <label for="current_password">Current Password</label>
+        <input type="password" id="current_password" name="current_password" required />
+      </div>
+      <div class="form-group">
+        <label for="new_password">New Password</label>
+        <input type="password" id="new_password" name="new_password" required minlength="8" />
+        <div class="pw-hint"><i class="fas fa-info-circle"></i> Password must be at least 8 characters</div>
+      </div>
+      <div class="form-group">
+        <label for="confirm_password">Confirm New Password</label>
+        <input type="password" id="confirm_password" name="confirm_password" required />
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Password</button>
+    </form>
+  </div>
+</div>
+
+<script>
+function validatePasswordForm(){
+  var np = document.getElementById('new_password').value;
+  var cp = document.getElementById('confirm_password').value;
+  if(np !== cp){
+    alert('New passwords do not match.');
+    return false;
+  }
+  if(np.length < 8){
+    alert('Password must be at least 8 characters.');
+    return false;
+  }
+  return true;
+}
+</script>
+{% endblock %}

@@ -619,7 +619,38 @@
   }
   document.getElementById('saveAllBtn').addEventListener('click', saveAll);
 
-  document.getElementById('monthSelect').addEventListener('change', loadMonth);
+  document.getElementById('monthSelect').addEventListener('change', function(){
+    try{ localStorage.setItem('ws_month', this.value); }catch(e){}
+    loadMonth();
+  });
+
+  // ─── Keyboard shortcuts ───
+  document.addEventListener('keydown', function(e){
+    if(e.ctrlKey && e.key === 'Enter'){
+      e.preventDefault();
+      var sb = document.getElementById('saveAllBtn');
+      if(sb) sb.click();
+    }
+    if(e.ctrlKey && e.key === 'f'){
+      e.preventDefault();
+      var sr = document.getElementById('wsSearch');
+      if(sr) sr.focus();
+    }
+    if(e.key === 'Escape'){
+      if(document.activeElement) document.activeElement.blur();
+    }
+  });
+
+  // ─── Restore last month from localStorage ───
+  try{
+    var saved = localStorage.getItem('ws_month');
+    if(saved){
+      var sel = document.getElementById('monthSelect');
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value === saved){ sel.value = saved; break; }
+      }
+    }
+  }catch(e){}
 
   try{ calcAll(); applyFilter(); setTimeout(loadMonth, 50); }catch(e){}
 })();

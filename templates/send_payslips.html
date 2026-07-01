@@ -17,7 +17,8 @@
   <div class="card-header">
     <h4><i class="fas fa-paper-plane"></i> Send Payslips via Email</h4>
     <div>
-      <button class="btn btn-primary btn-sm" id="sendAllBtn"><i class="fas fa-paper-plane"></i> Send All</button>
+      <button class="btn btn-primary btn-sm" id="sendSelectedBtn"><i class="fas fa-paper-plane"></i> Send All</button>
+      <span id="selectedCount" class="badge badge-info" style="font-size:12px;margin-left:6px;display:none;">0 selected</span>
     </div>
   </div>
   <div class="card-body">
@@ -145,7 +146,8 @@
     var filterEmail = document.getElementById('filterEmail');
     var selectAll = document.getElementById('selectAll');
     var table = document.getElementById('sendTable');
-    var sendBtn = document.getElementById('sendAllBtn');
+    var sendBtn = document.getElementById('sendSelectedBtn');
+    var selectedCountBadge = document.getElementById('selectedCount');
     if (!table) return;
 
     // Search and filter
@@ -180,12 +182,28 @@
       selectAll.removeEventListener('change', selectAllHandler);
       selectAll.addEventListener('change', selectAllHandler);
     }
+    function updateSelectedCount() {
+      var count = table.querySelectorAll('.payslip-check:checked:not(:disabled)').length;
+      if (selectedCountBadge) {
+        selectedCountBadge.textContent = count + ' selected';
+        selectedCountBadge.style.display = count > 0 ? '' : 'none';
+      }
+      if (sendBtn) {
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Send ' + (count > 0 ? '(' + count + ')' : 'All');
+      }
+    }
     function selectAllHandler() {
       var allCheckboxes = table.querySelectorAll('.payslip-check:not(:disabled)');
       allCheckboxes.forEach(function(cb) {
         cb.checked = selectAll.checked;
       });
+      updateSelectedCount();
     }
+    table.addEventListener('change', function(e) {
+      if (e.target.classList.contains('payslip-check')) {
+        updateSelectedCount();
+      }
+    });
 
     // Send all
     if (sendBtn) {
@@ -206,7 +224,7 @@
       if (!confirm('Send ' + selected.length + ' payslip(s) via email?')) return;
 
       sendBtn.disabled = true;
-      sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+      sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending ' + selected.length + '...';
 
       fetch('/payslips/send-bulk', {
         method: 'POST',

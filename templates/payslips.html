@@ -700,7 +700,31 @@
       });
     }
     if(inp){ inp.oninput = filter; }
-    if(sel){ sel.onchange = filter; }
+    if(sel){
+      sel.onchange = function(){
+        try{ localStorage.setItem('ps_month', sel.value); }catch(e){}
+        filter();
+      };
+      try{
+        var saved = localStorage.getItem('ps_month');
+        if(saved){
+          for(var si=0;si<sel.options.length;si++){
+            if(sel.options[si].value === saved){ sel.value = saved; break; }
+          }
+        }
+      }catch(e){}
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e){
+      if(e.ctrlKey && e.key === 'f'){
+        e.preventDefault();
+        if(inp) inp.focus();
+      }
+      if(e.key === 'Escape'){
+        if(document.activeElement) document.activeElement.blur();
+      }
+    });
 
     // Generate All button
     var genAllBtn = document.getElementById('generateAllBtn');

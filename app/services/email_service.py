@@ -45,8 +45,7 @@ class EmailService:
                 await smtp.login(username, password)
                 await smtp.send_message(message)
         else:
-            async with aiosmtplib.SMTP(hostname=server, port=port, timeout=30) as smtp:
-                await smtp.starttls()
+            async with aiosmtplib.SMTP(hostname=server, port=port, start_tls=True, timeout=30) as smtp:
                 await smtp.login(username, password)
                 await smtp.send_message(message)
 

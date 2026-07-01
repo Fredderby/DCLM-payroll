@@ -125,42 +125,48 @@ def process_payroll_excel(file_path: str, month: str = None, filename: str = "",
     # Use explicitly provided staff_category, default to pastoral
     staff_category = staff_category or "pastoral"
 
+    import math as _math
+
     records = []
     for _, row in df.iterrows():
         try:
             # Non-Pastoral: use monthly_basic_salary -> basic_salary
             np_basic = float(row.get(mapped_columns.get('monthly_basic_salary'), 0)) if mapped_columns.get('monthly_basic_salary') else None
+            def _c(val, default=''):
+                if val is None or (isinstance(val, float) and _math.isnan(val)):
+                    return default
+                return val
             record = {
-                'employee_number': str(row.get(mapped_columns.get('employee_number'), '') or ''),
-                'employee_name': str(row.get(mapped_columns.get('employee_name'), '') or ''),
-                'email': str(row.get(mapped_columns.get('email'), '') or ''),
-                'function': str(row.get(mapped_columns.get('function'), '') or ''),
-                'designation': str(row.get(mapped_columns.get('designation'), '') or ''),
-                'location': str(row.get(mapped_columns.get('location'), '') or ''),
-                'bank_account': str(row.get(mapped_columns.get('bank_account'), '') or ''),
-                'date_joined': row.get(mapped_columns.get('date_joined'), None),
-                'ssnit_number': str(row.get(mapped_columns.get('ssnit_number'), '') or ''),
+                'employee_number': str(_c(row.get(mapped_columns.get('employee_number'), ''), '') or ''),
+                'employee_name': str(_c(row.get(mapped_columns.get('employee_name'), ''), '') or ''),
+                'email': str(_c(row.get(mapped_columns.get('email'), ''), '') or ''),
+                'function': str(_c(row.get(mapped_columns.get('function'), ''), '') or ''),
+                'designation': str(_c(row.get(mapped_columns.get('designation'), ''), '') or ''),
+                'location': str(_c(row.get(mapped_columns.get('location'), ''), '') or ''),
+                'bank_account': str(_c(row.get(mapped_columns.get('bank_account'), ''), '') or ''),
+                'date_joined': _c(row.get(mapped_columns.get('date_joined'), None), None),
+                'ssnit_number': str(_c(row.get(mapped_columns.get('ssnit_number'), ''), '') or ''),
                 'month': month,
                 'staff_category': staff_category,
                 # Earnings
-                'basic_salary': float(row.get(mapped_columns.get('basic_salary'), np_basic or 0)) if (mapped_columns.get('basic_salary') or np_basic is not None) else 0,
-                'meals_monthly': float(row.get(mapped_columns.get('meals_monthly'), 0)) if mapped_columns.get('meals_monthly') else 0,
-                'responsibility_allowance': float(row.get(mapped_columns.get('responsibility_allowance'), 0)) if mapped_columns.get('responsibility_allowance') else 0,
-                'cola': float(row.get(mapped_columns.get('cola'), 0)) if mapped_columns.get('cola') else 0,
-                'leave_allowance': float(row.get(mapped_columns.get('leave_allowance'), 0)) if mapped_columns.get('leave_allowance') else 0,
-                'other_earnings': float(row.get(mapped_columns.get('other_earnings'), 0)) if mapped_columns.get('other_earnings') else 0,
+                'basic_salary': float(_c(row.get(mapped_columns.get('basic_salary'), np_basic or 0), 0)) if (mapped_columns.get('basic_salary') or np_basic is not None) else 0,
+                'meals_monthly': float(_c(row.get(mapped_columns.get('meals_monthly'), 0), 0)) if mapped_columns.get('meals_monthly') else 0,
+                'responsibility_allowance': float(_c(row.get(mapped_columns.get('responsibility_allowance'), 0), 0)) if mapped_columns.get('responsibility_allowance') else 0,
+                'cola': float(_c(row.get(mapped_columns.get('cola'), 0), 0)) if mapped_columns.get('cola') else 0,
+                'leave_allowance': float(_c(row.get(mapped_columns.get('leave_allowance'), 0), 0)) if mapped_columns.get('leave_allowance') else 0,
+                'other_earnings': float(_c(row.get(mapped_columns.get('other_earnings'), 0), 0)) if mapped_columns.get('other_earnings') else 0,
                 # Non-Pastoral specific earnings
-                'rent_monthly': float(row.get(mapped_columns.get('rent_monthly'), 0)) if mapped_columns.get('rent_monthly') else 0,
-                'utility_monthly': float(row.get(mapped_columns.get('utility_monthly'), 0)) if mapped_columns.get('utility_monthly') else 0,
-                'transport_monthly': float(row.get(mapped_columns.get('transport_monthly'), 0)) if mapped_columns.get('transport_monthly') else 0,
+                'rent_monthly': float(_c(row.get(mapped_columns.get('rent_monthly'), 0), 0)) if mapped_columns.get('rent_monthly') else 0,
+                'utility_monthly': float(_c(row.get(mapped_columns.get('utility_monthly'), 0), 0)) if mapped_columns.get('utility_monthly') else 0,
+                'transport_monthly': float(_c(row.get(mapped_columns.get('transport_monthly'), 0), 0)) if mapped_columns.get('transport_monthly') else 0,
                 # Deductions
-                'paye': float(row.get(mapped_columns.get('paye'), 0)) if mapped_columns.get('paye') else 0,
-                'tithe': float(row.get(mapped_columns.get('tithe'), 0)) if mapped_columns.get('tithe') else 0,
-                'future_savings': float(row.get(mapped_columns.get('future_savings'), 0)) if mapped_columns.get('future_savings') else 0,
-                'other_deductions': float(row.get(mapped_columns.get('other_deductions'), 0)) if mapped_columns.get('other_deductions') else 0,
+                'paye': float(_c(row.get(mapped_columns.get('paye'), 0), 0)) if mapped_columns.get('paye') else 0,
+                'tithe': float(_c(row.get(mapped_columns.get('tithe'), 0), 0)) if mapped_columns.get('tithe') else 0,
+                'future_savings': float(_c(row.get(mapped_columns.get('future_savings'), 0), 0)) if mapped_columns.get('future_savings') else 0,
+                'other_deductions': float(_c(row.get(mapped_columns.get('other_deductions'), 0), 0)) if mapped_columns.get('other_deductions') else 0,
                 # PF 8% deduction (for both Pastoral & Non-Pastoral) - Active field
-                'pf_eight_percent': float(row.get(mapped_columns.get('pf_eight_percent'), 0)) if mapped_columns.get('pf_eight_percent') else 0,
-                'ssnit_deduction': float(row.get(mapped_columns.get('ssnit_deduction'), 0)) if mapped_columns.get('ssnit_deduction') else 0,
+                'pf_eight_percent': float(_c(row.get(mapped_columns.get('pf_eight_percent'), 0), 0)) if mapped_columns.get('pf_eight_percent') else 0,
+                'ssnit_deduction': float(_c(row.get(mapped_columns.get('ssnit_deduction'), 0), 0)) if mapped_columns.get('ssnit_deduction') else 0,
             }
             records.append(record)
         except Exception as e:

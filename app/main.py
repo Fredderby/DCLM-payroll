@@ -23,6 +23,7 @@ templates = Jinja2Templates(directory="templates")
 templates.env.auto_reload = True
 
 import json
+import math
 
 def tojson_filter(value):
     try:
@@ -158,16 +159,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         if cached:
             stats, recent_payslips = cached
         else:
-            # Build stats for the dashboard - optimized queries
+            # Dashboard stats
             from sqlalchemy import func as sa_func
             employee_count = db.query(sa_func.count(Employee.id)).scalar() or 0
             payslip_count = db.query(sa_func.count(PayrollRecord.id)).scalar() or 0
             total_payroll_sum = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).scalar() or 0
             avg_net_salary = (total_payroll_sum / payslip_count) if payslip_count > 0 else 0
-            
-            # Distinct months - optimized
-            months = db.query(PayrollRecord.month).distinct().all()
-            months_active = len([m[0] for m in months if m[0]])
+            months_active = db.query(sa_func.count(sa_func.distinct(PayrollRecord.month))).scalar() or 0
             
             stats = {
                 "employee_count": employee_count,
@@ -179,32 +177,17 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
                 "email_sent": 0
             }
             
-            # Recent payslips (last 5) - optimized with eager loading
+            # Recent payslips (last 5)
             recent_payslips = db.query(PayrollRecord).order_by(PayrollRecord.id.desc()).limit(5).all()
-            # Build employee lookup only for the 5 recent payslip names
-            payslip_names = [p.employee_name for p in recent_payslips if p.employee_name]
-            if payslip_names:
-                all_emps_for_dash = db.query(Employee).filter(Employee.name.in_(payslip_names)).all()
-                # Also fetch any with matching normalized names
-                employees = {}
-                for e in all_emps_for_dash:
-                    employees[e.name] = e
-                    employees[' '.join((e.name or '').split()).upper()] = e
-                # For names that didn't match exactly, try normalized lookup
-                unmatched_names = [n for n in payslip_names if n not in employees]
-                if unmatched_names:
-                    all_emps_for_dash2 = db.query(Employee).all()
-                    for e in all_emps_for_dash2:
-                        employees[e.name] = e
-                        employees[' '.join((e.name or '').split()).upper()] = e
-            else:
-                employees = {}
+            # Build normalized employee lookup once
+            all_emps_dash = db.query(Employee).all()
+            emp_lookup = {}
+            for e in all_emps_dash:
+                emp_lookup[e.name] = e
+                emp_lookup[' '.join((e.name or '').split()).upper()] = e
             for p in recent_payslips:
                 emp_name = (p.employee_name or '').strip()
-                emp = employees.get(emp_name)
-                if not emp:
-                    normalized = ' '.join(emp_name.split()).upper()
-                    emp = employees.get(normalized)
+                emp = emp_lookup.get(emp_name) or emp_lookup.get(' '.join(emp_name.split()).upper())
                 p.employee = emp
             
             set_cache(cache_key, (stats, recent_payslips), ttl_seconds=120)
@@ -580,23 +563,25 @@ async def upload_payroll(request: Request, file: UploadFile = File(...), month: 
                         PayrollRecord.employee_name == employee.name, PayrollRecord.month == month
                     ).first()
 
+                    def _sanitize(v, fallback):
+                        return fallback if isinstance(v, float) and math.isnan(v) else v
                     if existing_payroll:
                         existing_payroll.staff_category = staff_category
-                        existing_payroll.basic_salary = record.get('basic_salary', existing_payroll.basic_salary)
-                        existing_payroll.meals_monthly = record.get('meals_monthly', existing_payroll.meals_monthly)
-                        existing_payroll.responsibility_allowance = record.get('responsibility_allowance', existing_payroll.responsibility_allowance)
-                        existing_payroll.cola = record.get('cola', existing_payroll.cola)
-                        existing_payroll.leave_allowance = record.get('leave_allowance', existing_payroll.leave_allowance)
-                        existing_payroll.other_earnings = record.get('other_earnings', existing_payroll.other_earnings)
-                        existing_payroll.rent_monthly = record.get('rent_monthly', existing_payroll.rent_monthly)
-                        existing_payroll.utility_monthly = record.get('utility_monthly', existing_payroll.utility_monthly)
-                        existing_payroll.transport_monthly = record.get('transport_monthly', existing_payroll.transport_monthly)
-                        existing_payroll.paye = record.get('paye', existing_payroll.paye)
-                        existing_payroll.tithe = record.get('tithe', existing_payroll.tithe)
-                        existing_payroll.future_savings = record.get('future_savings', existing_payroll.future_savings)
-                        existing_payroll.other_deductions = record.get('other_deductions', existing_payroll.other_deductions)
-                        existing_payroll.pf_eight_percent = record.get('pf_eight_percent', existing_payroll.pf_eight_percent)
-                        existing_payroll.ssnit_deduction = record.get('ssnit_deduction', existing_payroll.ssnit_deduction)
+                        existing_payroll.basic_salary = _sanitize(record.get('basic_salary'), existing_payroll.basic_salary)
+                        existing_payroll.meals_monthly = _sanitize(record.get('meals_monthly'), existing_payroll.meals_monthly)
+                        existing_payroll.responsibility_allowance = _sanitize(record.get('responsibility_allowance'), existing_payroll.responsibility_allowance)
+                        existing_payroll.cola = _sanitize(record.get('cola'), existing_payroll.cola)
+                        existing_payroll.leave_allowance = _sanitize(record.get('leave_allowance'), existing_payroll.leave_allowance)
+                        existing_payroll.other_earnings = _sanitize(record.get('other_earnings'), existing_payroll.other_earnings)
+                        existing_payroll.rent_monthly = _sanitize(record.get('rent_monthly'), existing_payroll.rent_monthly)
+                        existing_payroll.utility_monthly = _sanitize(record.get('utility_monthly'), existing_payroll.utility_monthly)
+                        existing_payroll.transport_monthly = _sanitize(record.get('transport_monthly'), existing_payroll.transport_monthly)
+                        existing_payroll.paye = _sanitize(record.get('paye'), existing_payroll.paye)
+                        existing_payroll.tithe = _sanitize(record.get('tithe'), existing_payroll.tithe)
+                        existing_payroll.future_savings = _sanitize(record.get('future_savings'), existing_payroll.future_savings)
+                        existing_payroll.other_deductions = _sanitize(record.get('other_deductions'), existing_payroll.other_deductions)
+                        existing_payroll.pf_eight_percent = _sanitize(record.get('pf_eight_percent'), existing_payroll.pf_eight_percent)
+                        existing_payroll.ssnit_deduction = _sanitize(record.get('ssnit_deduction'), existing_payroll.ssnit_deduction)
                         from app.services.payroll_service import calculate_payroll_totals
                         earnings = {'basic_salary': existing_payroll.basic_salary, 'meals_monthly': existing_payroll.meals_monthly,
                             'responsibility_allowance': existing_payroll.responsibility_allowance, 'cola': existing_payroll.cola,
@@ -983,7 +968,7 @@ def fuzzy_score(name_a, name_b):
     return max(0, min(score, 99))
 
 
-def find_best_employee_match(emp_no, emp_name, emp_email, db):
+def find_best_employee_match(emp_no, emp_name, emp_email, db, _cache={'emps':None,'nmap':None,'aliases':None}):
     """
     Find best matching Employee record.
     Priority:
@@ -1017,30 +1002,38 @@ def find_best_employee_match(emp_no, emp_name, emp_email, db):
         if emp:
             return emp, True, None
     
+    # Load and cache all aliases + employees on first call
+    if _cache['aliases'] is None:
+        _cache['aliases'] = db.query(EmployeeAlias).all()
+        all_emps = db.query(Employee).all()
+        _cache['emps'] = all_emps
+        _cache['nmap'] = {normalize_name(e.name or ''): e for e in all_emps}
+
     # Also check normalized alias match
     if not alias:
-        all_aliases = db.query(EmployeeAlias).all()
-        for a in all_aliases:
+        for a in _cache['aliases']:
             if normalize_name(a.alias_name) == norm_name:
-                emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+                emp = _cache['nmap'].get(normalize_name(a.alias_name))
+                if not emp:
+                    emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
                 if emp:
                     return emp, True, None
 
-    all_emps = db.query(Employee).all()
+    all_emps = _cache['emps']
+    nmap = _cache['nmap']
 
-    # Build normalized name lookup
+    # 3. Exact normalized match
+    if norm_name in nmap:
+        return nmap[norm_name], True, None
+
+    # 5. Fuzzy name match
     best_match = None
     best_score = 0
     for e in all_emps:
         e_norm = normalize_name(e.name or '')
-        # 3. Exact normalized match
         if e_norm == norm_name:
             return e, True, None
-        # 5. Track fuzzy score for suggestion
-        # Use pre-normalized strings to avoid redundant normalization
-        if e_norm == norm_name:
-            score = 100
-        elif e_norm in norm_name or norm_name in e_norm:
+        if e_norm in norm_name or norm_name in e_norm:
             score = 90
         else:
             tokens_a = set(e_norm.split())
@@ -1066,10 +1059,8 @@ def find_best_employee_match(emp_no, emp_name, emp_email, db):
 
     # Return best fuzzy match
     if best_match and best_score >= 80:
-        # High confidence - auto match
         return best_match, True, None
     if best_match and best_score >= 50:
-        # Medium confidence - suggest for review
         return None, False, best_match.name
 
     return None, False, None
@@ -1491,19 +1482,12 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
         # Load payslips with a safety cap to prevent excessive memory/rendering
         payslips = query.order_by(PayrollRecord.employee_name).limit(500).all()
         
-        # Build employee lookup for the loaded payslips only
+        # Build payslip name set and normalized employee lookup
         payslip_names = list(set(p.employee_name for p in payslips if p.employee_name))
         all_employees = {}
-        if payslip_names:
-            for e in db.query(Employee).filter(Employee.name.in_(payslip_names)).all():
-                all_employees[e.name] = e
-                all_employees[' '.join((e.name or '').split()).upper()] = e
-            # Fallback for names that didn't match exactly
-            unmatched = [n for n in payslip_names if n not in all_employees]
-            if unmatched:
-                for e in db.query(Employee).filter(Employee.name.ilike('%')).all():
-                    all_employees[e.name] = e
-                    all_employees[' '.join((e.name or '').split()).upper()] = e
+        for e in db.query(Employee).all():
+            all_employees[e.name] = e
+            all_employees[' '.join((e.name or '').split()).upper()] = e
         
         # Build alias lookup
         from app.models.employee_alias import EmployeeAlias
@@ -1512,54 +1496,62 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
             alias_map[a.alias_name] = a.employee_id
             alias_map[' '.join((a.alias_name or '').split()).upper()] = a.employee_id
         
-        # Fuzzy matching fallback for still-unmatched names
+        # Fuzzy matching fallback — pre-compute norm + token sets to avoid repeated splits
         fuzzy_needed = [n for n in payslip_names
                         if n not in all_employees
                         and ' '.join(n.split()).upper() not in all_employees
                         and not (alias_map.get(n) or alias_map.get(' '.join(n.split()).upper()))]
         if fuzzy_needed and all_employees:
-            unique_emps = {e.id: e for e in all_employees.values()}.values()
-            emp_norms = {e.id: normalize_name(e.name or '') for e in unique_emps}
+            unique_emps = list({e.id: e for e in all_employees.values()}.values())
+            emp_data = [{
+                'emp': e,
+                'norm': normalize_name(e.name or ''),
+                'tokens': set(normalize_name(e.name or '').split())
+            } for e in unique_emps]
             for pn in set(fuzzy_needed):
                 pn_norm = normalize_name(pn)
+                pn_tokens = set(pn_norm.split())
                 best_emp, best_score = None, 0
-                for e in unique_emps:
-                    e_norm = emp_norms[e.id]
-                    if pn_norm == e_norm:
-                        best_emp, best_score = e, 100
+                for ed in emp_data:
+                    if pn_norm == ed['norm']:
+                        best_emp, best_score = ed['emp'], 100
                         break
-                    if pn_norm in e_norm or e_norm in pn_norm:
+                    if pn_norm in ed['norm'] or ed['norm'] in pn_norm:
                         score = 90
                     else:
-                        pt = set(pn_norm.split())
-                        et = set(e_norm.split())
-                        if not pt or not et:
+                        if not pn_tokens or not ed['tokens']:
                             continue
-                        score = 100 if pt == et else int((len(pt & et) / max(len(pt), len(et))) * 80)
+                        score = 100 if pn_tokens == ed['tokens'] else int((len(pn_tokens & ed['tokens']) / max(len(pn_tokens), len(ed['tokens']))) * 80)
                     if score > best_score:
                         best_score = score
-                        best_emp = e
+                        best_emp = ed['emp']
                         if score >= 90:
                             break
                 if best_emp and best_score >= 50:
                     all_employees[pn] = best_emp
                     all_employees[' '.join(pn.split()).upper()] = best_emp
         
-        # Build employee lookup dict for payslips
+        # Build employee lookup dict for payslips (batch alias queries)
         payslip_employees = {}
+        missing_ids = set()
         for p in payslips:
             emp_name = (p.employee_name or '').strip()
-            emp = all_employees.get(emp_name)
-            if not emp:
-                normalized = ' '.join(emp_name.split()).upper()
-                emp = all_employees.get(normalized)
+            normalized = ' '.join(emp_name.split()).upper()
+            emp = all_employees.get(emp_name) or all_employees.get(normalized)
             if not emp:
                 alias_emp_id = alias_map.get(emp_name) or alias_map.get(normalized)
                 if alias_emp_id:
-                    for e in db.query(Employee).filter(Employee.id == alias_emp_id).all():
-                        emp = e
-                        break
-            payslip_employees[p.id] = emp
+                    missing_ids.add(alias_emp_id)
+            payslip_employees[p.id] = emp or alias_emp_id
+        # Batch resolve alias employees
+        if missing_ids:
+            for e in db.query(Employee).filter(Employee.id.in_(missing_ids)).all():
+                for pid, val in payslip_employees.items():
+                    if val == e.id:
+                        payslip_employees[pid] = e
+            for pid in payslip_employees:
+                if not isinstance(payslip_employees[pid], Employee):
+                    payslip_employees[pid] = None
         
         template = templates.get_template("payslips.html")
         rendered = template.render({
@@ -1636,7 +1628,6 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
     from app.models.payroll import PayrollRecord
     from app.models.employee import Employee
     from app.models.loan import Loan
-    from app.services.pdf_service import generate_payslip_pdf
     
     try:
         payroll = db.query(PayrollRecord).filter(PayrollRecord.id == payroll_id).first()
@@ -1644,16 +1635,7 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=404, content={"error": "Payslip not found"})
         
-        # Generate PDF on demand if not already generated (for preview button to work)
-        if not payroll.pdf_generated or not isinstance(payroll.pdf_generated, str) or not os.path.exists(str(payroll.pdf_generated or "")):
-            try:
-                pdf_path = generate_payslip_pdf(db, payroll.id)
-                if pdf_path:
-                    payroll.pdf_generated = pdf_path
-                    db.commit()
-            except Exception as e:
-                pass  # PDF generation failed, preview still works
-        
+        # Employee lookup — PDF generation is deferred to the download endpoint
         # Robust employee lookup with alias matching
         from app.models.employee_alias import EmployeeAlias
         emp_name = (payroll.employee_name or '').strip()
@@ -2139,7 +2121,7 @@ async def loans_page(request: Request, db: Session = Depends(get_db)):
     from app.models.loan import Loan
     from app.models.employee import Employee
     
-    loans = db.query(Loan).order_by(Loan.id.desc()).all()
+    loans = db.query(Loan).order_by(Loan.id.desc()).limit(1000).all()
     all_employees = db.query(Employee).filter(Employee.name.isnot(None)).all()
     
     template = templates.get_template("loans.html")
@@ -2482,11 +2464,10 @@ async def reports_page(request: Request, db: Session = Depends(get_db)):
     if cached:
         stats, monthly_data = cached
     else:
-        total_records = db.query(PayrollRecord).count()
-        total_employees = db.query(Employee).count()
-        
-        total_payroll_data = db.query(PayrollRecord.net_salary).all()
-        total_payroll = sum(p[0] or 0 for p in total_payroll_data)
+        from sqlalchemy import func as sa_func
+        total_records = db.query(sa_func.count(PayrollRecord.id)).scalar() or 0
+        total_employees = db.query(sa_func.count(Employee.id)).scalar() or 0
+        total_payroll = db.query(sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)).scalar() or 0
         avg_net = total_payroll / total_records if total_records > 0 else 0
         
         stats = {
@@ -2496,17 +2477,15 @@ async def reports_page(request: Request, db: Session = Depends(get_db)):
             "avg_net": avg_net
         }
         
-        # Monthly breakdown
-        months = db.query(PayrollRecord.month).distinct().order_by(PayrollRecord.month.desc()).all()
+        # Monthly breakdown — single GROUP BY query replaces N+1
         monthly_data = []
-        for m in months:
-            if m[0]:
-                records = db.query(PayrollRecord).filter(PayrollRecord.month == m[0]).all()
-                monthly_data.append({
-                    "month": m[0],
-                    "count": len(records),
-                    "total": sum(r.net_salary or 0 for r in records)
-                })
+        monthly_rows = db.query(
+            PayrollRecord.month,
+            sa_func.count(PayrollRecord.id),
+            sa_func.coalesce(sa_func.sum(PayrollRecord.net_salary), 0)
+        ).filter(PayrollRecord.month.isnot(None)).group_by(PayrollRecord.month).order_by(PayrollRecord.month.desc()).all()
+        for m in monthly_rows:
+            monthly_data.append({"month": m[0], "count": m[1], "total": m[2]})
         set_cache(cache_key, (stats, monthly_data), ttl_seconds=120)
     
     # Build month list for template
@@ -2674,9 +2653,11 @@ async def alias_management_page(request: Request, db: Session = Depends(get_db))
     from app.models.employee_alias import EmployeeAlias
     from app.models.employee import Employee
     aliases = db.query(EmployeeAlias).order_by(EmployeeAlias.alias_name).all()
+    emp_ids = list(set(a.employee_id for a in aliases if a.employee_id))
+    emp_map = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(emp_ids)).all()} if emp_ids else {}
     alias_list = []
     for a in aliases:
-        emp = db.query(Employee).filter(Employee.id == a.employee_id).first()
+        emp = emp_map.get(a.employee_id)
         alias_list.append({
             'id': a.id,
             'alias_name': a.alias_name,
@@ -2742,7 +2723,6 @@ async def resolve_mismatches(request: Request, db: Session = Depends(get_db)):
     
     form = await request.form()
     mismatches_raw = form.get("mismatch_data", "[]")
-    import json
     mismatches = json.loads(mismatches_raw)
     
     for m in mismatches:
@@ -3022,6 +3002,95 @@ async def send_single_payslip(request: Request, payroll_id: int, db: Session = D
         traceback.print_exc()
         return JSONResponse(content={"success": False, "error": str(e)})
 
+@app.post("/payslips/send-bulk")
+async def send_bulk_payslips(request: Request, db: Session = Depends(get_db)):
+    """Send selected payslips via email."""
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse(content={"success": False, "error": "Not authenticated"}, status_code=401)
+
+    from app.models.payroll import PayrollRecord
+    from app.models.employee import Employee
+    from app.models.employee_alias import EmployeeAlias
+    from app.services.email_service import send_single_and_log
+    from app.services.pdf_service import generate_payslip_pdf
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(content={"success": False, "error": "Invalid JSON body"})
+
+    ids = body.get("ids", [])
+    if not ids or not isinstance(ids, list):
+        return JSONResponse(content={"success": False, "error": "No payslip IDs provided"})
+
+    results = {"successful": 0, "failed": 0, "errors": []}
+
+    for pid in ids:
+        try:
+            record = db.query(PayrollRecord).filter(PayrollRecord.id == pid).first()
+            if not record:
+                results["failed"] += 1
+                results["errors"].append(f"Payroll {pid}: Not found")
+                continue
+
+            emp = db.query(Employee).filter(Employee.name == record.employee_name).first()
+            if not emp:
+                rec_name_norm = ' '.join((record.employee_name or '').split()).upper()
+                all_emps = db.query(Employee).all()
+                for e in all_emps:
+                    if ' '.join((e.name or '').split()).upper() == rec_name_norm:
+                        emp = e
+                        break
+            if not emp:
+                alias = db.query(EmployeeAlias).filter(EmployeeAlias.alias_name == record.employee_name.strip()).first()
+                if not alias:
+                    rec_name_norm = ' '.join((record.employee_name or '').split()).upper()
+                    for a in db.query(EmployeeAlias).all():
+                        if ' '.join((a.alias_name or '').split()).upper() == rec_name_norm:
+                            alias = a
+                            break
+                if alias:
+                    emp = db.query(Employee).filter(Employee.id == alias.employee_id).first()
+            if not emp or not emp.email:
+                name = record.employee_name or "Unknown"
+                results["failed"] += 1
+                results["errors"].append(f"{name}: No email address")
+                continue
+
+            pdf_path = record.pdf_generated
+            if not pdf_path or not os.path.exists(pdf_path):
+                pdf_path = generate_payslip_pdf(db, record.id)
+                if pdf_path:
+                    record.pdf_generated = pdf_path
+                    db.commit()
+            if not pdf_path or not os.path.exists(pdf_path):
+                results["failed"] += 1
+                results["errors"].append(f"{emp.name}: Failed to generate PDF")
+                continue
+
+            success, error_msg = await send_single_and_log(
+                employee_id=emp.id, employee_name=emp.name,
+                employee_number=emp.employee_number or "",
+                recipient_email=emp.email, payroll_id=record.id,
+                month=record.month, net_salary=record.net_salary or 0,
+                pdf_path=pdf_path, db_session=db
+            )
+            if success:
+                results["successful"] += 1
+            else:
+                results["failed"] += 1
+                results["errors"].append(f"{emp.name}: {error_msg}")
+        except Exception as e:
+            results["failed"] += 1
+            results["errors"].append(f"Payroll {pid}: {str(e)}")
+
+    return JSONResponse(content={
+        "success": results["failed"] == 0,
+        "message": f"Sent {results['successful']} payslip(s). Failed: {results['failed']}",
+        "results": results
+    })
 
 @app.post("/payslips/{log_id}/resend")
 async def resend_payslip(request: Request, log_id: int, db: Session = Depends(get_db)):
@@ -3106,6 +3175,39 @@ async def resend_payslip(request: Request, log_id: int, db: Session = Depends(ge
     else:
         return JSONResponse(content={"success": False, "error": error_msg})
 
+
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    template = templates.get_template("profile.html")
+    rendered = template.render({"user": current_user, "error": "", "success": ""})
+    return HTMLResponse(content=rendered, media_type="text/html")
+
+@app.post("/profile")
+async def profile_update(request: Request, current_password: str = Form(...), new_password: str = Form(...), confirm_password: str = Form(...), db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.core.security import verify_password, get_password_hash
+    error = ""
+    success = ""
+    if new_password != confirm_password:
+        error = "New passwords do not match."
+    elif len(new_password) < 8:
+        error = "Password must be at least 8 characters long."
+    elif not verify_password(current_password, current_user.hashed_password):
+        error = "Current password is incorrect."
+    else:
+        current_user.hashed_password = get_password_hash(new_password)
+        db.commit()
+        success = "Password updated successfully."
+    template = templates.get_template("profile.html")
+    rendered = template.render({"user": current_user, "error": error, "success": success})
+    return HTMLResponse(content=rendered, media_type="text/html")
 
 @app.get("/logout")
 async def logout(request: Request):
