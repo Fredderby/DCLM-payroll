@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+{% block title %}Payroll Workspace - DCLM Payroll{% endblock %}
+{% block page_title %}Payroll Workspace{% endblock %}
+{% block page_subtitle %}Batch payroll computation — enter data for any employee{% endblock %}
+
+{% block header_actions %}
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <select class="form-control" id="monthSelect" style="width:auto;min-width:130px;">
+    {% for m in months %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-sm btn-secondary" id="loadMonthBtn"><i class="fas fa-download"></i> Load</button>
+  <button class="btn btn-sm btn-info" id="copyPrevBtn" title="Copy data from previous month"><i class="fas fa-copy"></i> Copy Prev.</button>
+  <button class="btn btn-success btn-sm" id="saveAllBtn"><i class="fas fa-check"></i> Generate Payroll</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+.content-wrapper{overflow-x:hidden!important}
+*{box-sizing:border-box}
+
+/* ── Workspace Card ── */
+.ws-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);overflow:hidden}
+.ws-card-body{padding:20px}
+
+/* ── Stats Bar ── */
+.ws-stats{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.ws-stat{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13px}
+.ws-stat-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px}
+.ws-stat-icon.blue{background:#dbeafe;color:#2563eb}
+.ws-stat-icon.green{background:#d1fae5;color:#059669}
+.ws-stat-icon.amber{background:#fef3c7;color:#d97706}
+.ws-stat-icon.purple{background:#ede9fe;color:#7c3aed}
+.ws-stat-label{color:#64748b;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em}
+.ws-stat-value{font-weight:700;font-size:15px;color:#0f172a}
+.ws-stat-value.green{color:#059669}
+.ws-stat-value.red{color:#dc2626}
+.ws-stat-value.blue{color:#2563eb}
+
+/* ── Toolbar ── */
+.ws-toolbar{display:flex;gap:10px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
+.ws-search-wrap{display:flex;align-items:center;gap:8px;flex:1;min-width:200px;max-width:340px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;transition:border-color .2s,box-shadow .2s}
+.ws-search-wrap:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+.ws-search-wrap i{color:#94a3b8;font-size:13px}
+.ws-search-wrap input{border:none;background:none;outline:none;flex:1;font-size:13px;color:#0f172a}
+.ws-search-wrap input::placeholder{color:#94a3b8}
+.ws-toolbar .ws-filter{display:flex;gap:3px;background:#f1f5f9;padding:3px;border-radius:8px}
+.ws-toolbar .ws-filter button{padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:#475569;transition:all .15s}
+.ws-toolbar .ws-filter button.active{background:#fff;color:#1e40af;box-shadow:0 1px 3px rgba(0,0,0,0.1);font-weight:600}
+.ws-toolbar .ws-filter button:hover:not(.active){color:#0f172a}
+
+/* ── Hint Banner ── */
+.ws-hint{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12px;color:#92400e;line-height:1.5}
+.ws-hint i{font-size:14px;margin-top:1px;color:#d97706}
+
+/* ── Percentage Bar ── */
+.ws-pct-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap;font-size:12px}
+.ws-pct-bar .pct-label{font-weight:600;color:#1e40af;font-size:11px;display:flex;align-items:center;gap:5px}
+.ws-pct-bar label{display:flex;align-items:center;gap:4px;color:#475569;font-size:11px;padding:2px 4px;border-radius:4px;white-space:nowrap}
+.ws-pct-bar input{width:56px;padding:3px 5px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;text-align:right;outline:none;transition:border-color .15s}
+.ws-pct-bar input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,0.1)}
+.ws-pct-bar .pct-group{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px}
+.ws-pct-bar .pct-group.pastoral{background:#dbeafe;border:1px solid #bfdbfe}
+.ws-pct-bar .pct-group.non_pastoral{background:#fef3c7;border:1px solid #fde68a}
+.ws-pct-bar .pct-group .gp-label{font-weight:700;font-size:9px;text-transform:uppercase;letter-spacing:0.04em;margin-right:3px;color:#374151}
+.ws-pct-bar .pct-toggle{font-size:11px;font-weight:500;color:#2563eb;cursor:pointer;padding:5px 12px;border:1px solid #bfdbfe;border-radius:6px;background:#fff;transition:all .15s;display:flex;align-items:center;gap:5px}
+.ws-pct-bar .pct-toggle:hover{background:#eff6ff;border-color:#2563eb}
+.ws-hidden{display:none!important}
+
+/* ── Table Scroll ── */
+.ws-scroll-wrap{overflow-x:auto;overflow-y:auto;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,0.04);background:#fff;max-height:calc(100vh - 300px)}
+.ws-table-wrap{min-width:1800px;display:inline-block}
+
+/* ── Table ── */
+.ws-table{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%}
+/* Column group header row */
+.ws-table .ws-gh-row th{background:#0f172a;color:#fff;padding:7px 3px 5px;text-align:center;font-weight:700;position:sticky;top:0;z-index:10;border-right:1px solid rgba(255,255,255,0.06);font-size:10px;letter-spacing:0.04em;text-transform:uppercase}
+.ws-table .ws-gh-row th:first-child{text-align:left;padding-left:8px;min-width:130px;width:130px;position:sticky;left:0;z-index:12;background:#0f172a}
+.ws-table .ws-gh-row th.ws-gh-earn{background:#065f46;color:#fff;border-bottom:2px solid #059669}
+.ws-table .ws-gh-row th.ws-gh-ded{background:#7f1d1d;color:#fff;border-bottom:2px solid #dc2626}
+.ws-table .ws-gh-row th.ws-gh-tot{background:#1e1b4b;color:#fff;border-bottom:2px solid #4f46e5}
+/* Column sub-header row */
+.ws-table th.sub{background:#1e293b;color:#cbd5e1;padding:5px 3px;text-align:center;font-weight:600;position:sticky;top:31px;z-index:10;border-right:1px solid rgba(255,255,255,0.05);font-size:9px;letter-spacing:0.03em}
+.ws-table th.sub:first-child{text-align:left;padding-left:8px;min-width:130px;width:130px;position:sticky;left:0;z-index:12;background:#1e293b}
+.ws-table td{padding:2px 3px;text-align:center;border-bottom:1px solid #f1f5f9;vertical-align:middle;height:34px;transition:background .15s}
+.ws-table td:first-child{text-align:left;padding:2px 6px 2px 10px;font-weight:500;color:#0f172a;position:sticky;left:0;z-index:2;background:#fff;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis;max-width:130px;border-right:1px solid #e2e8f0}
+.ws-table tr:nth-child(even) td{background:#f8fafc}
+.ws-table tr:nth-child(even) td:first-child{background:#f8fafc}
+.ws-table tr:hover td{background:#eff6ff}
+.ws-table tr:hover td:first-child{background:#eff6ff}
+.ws-table tr.ws-has-data td{background:#f0fdf4}
+.ws-table tr.ws-has-data:nth-child(even) td{background:#ecfdf5}
+.ws-table tr.ws-has-data td:first-child{border-left:3px solid #059669;background:#f0fdf4}
+.ws-table tr.ws-has-data:nth-child(even) td:first-child{background:#ecfdf5}
+.ws-table tr.ws-has-data:hover td{background:#dcfce7}
+.ws-table tr.ws-has-data:hover td:first-child{background:#dcfce7}
+.ws-ra,.ws-np-col,.ws-oe{display:none}
+.ws-table tr.ws-pastoral .ws-ra{display:table-cell}
+.ws-table tr.ws-pastoral .ws-ra-input{display:block}
+.ws-table tr.ws-non_pastoral .ws-np-col{display:table-cell}
+.ws-table tr.ws-non_pastoral .ws-oe{display:table-cell}
+.ws-table tr.ws-non_pastoral .ws-oe-input{display:block}
+.ws-table input,.ws-table select{width:100%;min-width:62px;padding:4px 5px;border:1px solid #e2e8f0;border-radius:5px;font-size:11px;text-align:right;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+.ws-table select{text-align:left;cursor:pointer;min-width:82px;font-weight:600;font-size:10px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E") no-repeat right 6px center;padding-right:20px;appearance:none}
+.ws-table input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,0.08)}
+.ws-table input[readonly]{background:#f1f5f9;color:#475569;cursor:default;border-color:transparent}
+.ws-table .ws-th-sub{display:block;font-size:7px;font-weight:400;opacity:0.5;text-transform:none;letter-spacing:0}
+/* Category badge in row */
+.ws-table .ws-cat-badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:9px;font-weight:600;letter-spacing:0.02em}
+.ws-cat-badge.pastoral{background:#dbeafe;color:#1e40af}
+.ws-cat-badge.non_pastoral{background:#fef3c7;color:#92400e}
+/* Row totals */
+.ws-table .ws-total-r{font-weight:700;color:#059669;font-size:12px;background:#f0fdf4!important}
+.ws-table .ws-total-d{font-weight:700;color:#dc2626;font-size:12px;background:#fef2f2!important}
+.ws-table .ws-net{font-weight:800;font-size:13px;color:#0f172a;background:#eef2ff!important}
+/* PAYE lock */
+.ws-paye-wrap{position:relative;display:inline-block;width:100%}
+.ws-paye-wrap input{padding-right:20px}
+.ws-paye-lock{position:absolute;right:2px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:9px;color:#94a3b8;padding:2px;background:none;border:none;line-height:1;transition:color .15s}
+.ws-paye-lock:hover{color:#2563eb}
+
+/* ── Footer Grand Totals ── */
+.ws-footer{display:flex;justify-content:flex-end;align-items:center;margin-top:14px;gap:10px}
+.ws-grand{display:flex;gap:0;background:#0f172a;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.12)}
+.ws-grand-item{padding:10px 22px;text-align:center;border-right:1px solid rgba(255,255,255,0.08)}
+.ws-grand-item:last-child{border-right:none}
+.ws-grand-label{font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:rgba(255,255,255,0.5);font-weight:500}
+.ws-grand-value{font-size:15px;font-weight:800;margin-top:2px;color:#fff}
+.ws-grand-value.green{color:#34d399}
+.ws-grand-value.red{color:#f87171}
+.ws-grand-value.white{color:#fff}
+
+@media(max-width:768px){
+  .ws-table{font-size:10px;min-width:1500px}
+  .ws-table th.sub{font-size:8px;padding:3px 2px}
+  .ws-table .ws-gh-row th{font-size:9px;padding:5px 2px}
+  .ws-table input{min-width:48px;padding:3px 3px;font-size:10px}
+  .ws-table td:first-child{min-width:100px;max-width:100px;font-size:10px}
+  .content-wrapper{padding:12px!important}
+  .ws-card-body{padding:14px}
+  .ws-stat{padding:8px 12px;font-size:12px}
+  .ws-grand-item{padding:8px 14px}
+  .ws-grand-value{font-size:13px}
+  .ws-toolbar{flex-direction:column;align-items:stretch}
+  .ws-search-wrap{max-width:none}
+}
+</style>
+
+<div class="ws-card">
+<div class="ws-card-body">
+
+<div class="ws-stats">
+  <div class="ws-stat">
+    <div class="ws-stat-icon blue"><i class="fas fa-users"></i></div>
+    <div>
+      <div class="ws-stat-label">Employees</div>
+      <div class="ws-stat-value" id="empCount">{{ employee_names|length }}</div>
+    </div>
+  </div>
+  <div class="ws-stat">
+    <div class="ws-stat-icon amber"><i class="fas fa-eye"></i></div>
+    <div>
+      <div class="ws-stat-label">Visible</div>
+      <div class="ws-stat-value" id="wsShowCount">{{ employee_names|length }}</div>
+    </div>
+  </div>
+  <div class="ws-stat">
+    <div class="ws-stat-icon green"><i class="fas fa-plus-circle"></i></div>
+    <div>
+      <div class="ws-stat-label">Auto-calc</div>
+      <div class="ws-stat-value" style="font-size:12px;font-weight:500;">SSF 5.5% &middot; PF 8% &middot; PAYE &middot; Tithe</div>
+    </div>
+  </div>
+</div>
+
+<div class="ws-toolbar">
+  <div class="ws-search-wrap">
+    <i class="fas fa-search"></i>
+    <input type="text" id="wsSearch" placeholder="Search employee..." />
+  </div>
+  <div class="ws-filter">
+    <button data-filter="all" class="active">All</button>
+    <button data-filter="pastoral">Pastoral</button>
+    <button data-filter="non_pastoral">Non-Pastoral</button>
+  </div>
+</div>
+
+<div class="ws-hint">
+  <i class="fas fa-lightbulb"></i>
+  <span>Set each employee's <strong>Category</strong> first. Pastoral uses <em>Resp. Allowance</em>; Non-Pastoral uses <em>Rent, Utility, Transport, Other Earnings/Deductions</em>. Select month &rarr; enter earnings &rarr; <strong>Save</strong>. Click <i class="fas fa-lock" style="font-size:9px;"></i> to edit PAYE manually.</span>
+</div>
+
+<div class="ws-pct-bar">
+  <span class="pct-label"><i class="fas fa-percent"></i> % of Basic:</span>
+  <span class="pct-group pastoral">
+    <span class="gp-label">Pastoral:</span>
+    <label>Meals <input type="number" class="ws-pct" data-cat="pastoral" data-field="meals_monthly" min="0" max="100" step="0.5" value="0" /></label>
+    <label>Resp.All. <input type="number" class="ws-pct" data-cat="pastoral" data-field="responsibility_allowance" min="0" max="100" step="0.5" value="0" /></label>
+  </span>
+  <span class="pct-group non_pastoral">
+    <span class="gp-label">Non-Pastoral:</span>
+    <label>Meals <input type="number" class="ws-pct" data-cat="non_pastoral" data-field="meals_monthly" min="0" max="100" step="0.5" value="0" /></label>
+    <label>Rent <input type="number" class="ws-pct" data-cat="non_pastoral" data-field="rent_monthly" min="0" max="100" step="0.5" value="0" /></label>
+    <label>Utility <input type="number" class="ws-pct" data-cat="non_pastoral" data-field="utility_monthly" min="0" max="100" step="0.5" value="0" /></label>
+    <label>Transport <input type="number" class="ws-pct" data-cat="non_pastoral" data-field="transport_monthly" min="0" max="100" step="0.5" value="0" /></label>
+  </span>
+  <span class="pct-toggle" id="pctApplyBtn"><i class="fas fa-play"></i> Apply</span>
+</div>
+
+<div class="ws-scroll-wrap">
+<div class="ws-table-wrap">
+<table class="ws-table" id="wsTable">
+<thead>
+<tr class="ws-gh-row">
+  <th>Employee</th>
+  <th style="width:90px;min-width:90px;">Category</th>
+  <th colspan="11" class="ws-gh-earn">Earnings</th>
+  <th colspan="5" class="ws-gh-ded">Deductions</th>
+  <th colspan="3" class="ws-gh-tot">Totals</th>
+</tr>
+<tr>
+  <th class="sub">Employee</th>
+  <th class="sub" style="width:90px;min-width:90px;">Category</th>
+  <th class="sub">Basic<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Meals<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Resp.All.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Rent<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Util.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Transport<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">COLA<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Leave<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Oth.Earn.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">SSF5.5%<span class="ws-th-sub">auto</span></th>
+  <th class="sub">PF8%<span class="ws-th-sub">auto</span></th>
+  <th class="sub">PAYE<span class="ws-th-sub">auto</span></th>
+  <th class="sub">Tithe<span class="ws-th-sub">auto</span></th>
+  <th class="sub">Fut.Sav.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub">Oth.Ded.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub" style="background:#065f46;color:#fff;">Earn.</th>
+  <th class="sub" style="background:#7f1d1d;color:#fff;">Ded.</th>
+  <th class="sub" style="background:#1e1b4b;color:#fff;">Net</th>
+</tr>
+</thead>
+<tbody id="wsBody">
+{% set emp_cats = employee_categories if employee_categories is defined else [] %}
+{% for name in employee_names %}
+{% set cat = emp_cats[loop.index0] if loop.index0 < emp_cats|length else "pastoral" %}
+<tr data-name="{{ name }}" data-cat="{{ cat }}" class="ws-{{ cat }}">
+  <td>{{ name }}</td>
+  <td>
+    <select class="wf ws-cat">
+      <option value="pastoral"{% if cat == 'pastoral' %} selected{% endif %}>Pastoral</option>
+      <option value="non_pastoral"{% if cat == 'non_pastoral' %} selected{% endif %}>Non-Pastoral</option>
+    </select>
+  </td>
+  <td><input type="text" class="wf earn" data-field="basic_salary" placeholder="-" /></td>
+  <td><input type="text" class="wf earn" data-field="meals_monthly" placeholder="-" /></td>
+  <td class="ws-ra"><input type="text" class="wf earn ws-ra-input" data-field="responsibility_allowance" placeholder="-" /></td>
+  <td class="ws-np-col"><input type="text" class="wf earn" data-field="rent_monthly" placeholder="-" /></td>
+  <td class="ws-np-col"><input type="text" class="wf earn" data-field="utility_monthly" placeholder="-" /></td>
+  <td class="ws-np-col"><input type="text" class="wf earn" data-field="transport_monthly" placeholder="-" /></td>
+  <td><input type="text" class="wf earn" data-field="cola" placeholder="-" /></td>
+  <td><input type="text" class="wf earn" data-field="leave_allowance" placeholder="-" /></td>
+  <td class="ws-oe"><input type="text" class="wf earn ws-oe-input" data-field="other_earnings" placeholder="-" /></td>
+  <td><input type="text" class="wf ded" data-field="ssnit_deduction" readonly tabindex="-1" /></td>
+  <td><input type="text" class="wf ded" data-field="pf_eight_percent" readonly tabindex="-1" /></td>
+  <td>
+    <span class="ws-paye-wrap">
+      <input type="text" class="wf ded paye-input" data-field="paye" readonly />
+      <button class="ws-paye-lock" title="Toggle manual PAYE"><i class="fas fa-lock"></i></button>
+    </span>
+  </td>
+  <td><input type="text" class="wf ded" data-field="tithe" readonly tabindex="-1" /></td>
+  <td><input type="text" class="wf ded" data-field="future_savings" placeholder="-" /></td>
+  <td class="ws-oe"><input type="text" class="wf ded ws-oe-input" data-field="other_deductions" placeholder="-" /></td>
+  <td class="ws-total-r">0.00</td>
+  <td class="ws-total-d">0.00</td>
+  <td class="ws-net">0.00</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+
+<div class="ws-footer">
+  <div class="ws-grand">
+    <div class="ws-grand-item">
+      <div class="ws-grand-label">Total Earnings</div>
+      <div class="ws-grand-value green" id="gTotalEarn">GHS 0.00</div>
+    </div>
+    <div class="ws-grand-item">
+      <div class="ws-grand-label">Total Deductions</div>
+      <div class="ws-grand-value red" id="gTotalDed">GHS 0.00</div>
+    </div>
+    <div class="ws-grand-item">
+      <div class="ws-grand-label">Net Payroll</div>
+      <div class="ws-grand-value white" id="gTotalNet">GHS 0.00</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function(){
+  var payeLock = {};
+
+  function n(v){ try{return parseFloat((''+v).replace(/,/g,''))||0}catch(e){return 0} }
+  function f(v){ return n(v).toFixed(2); }
+
+  function applyCat(tr){
+    var sel = tr.querySelector('.ws-cat');
+    if(!sel) return;
+    var cat = sel.value;
+    tr.setAttribute('data-cat', cat);
+    tr.className = 'ws-' + cat;
+    calcAll();
+  }
+
+  function calcRow(tr){
+    var cat = tr.getAttribute('data-cat') || 'pastoral';
+    var earns = tr.querySelectorAll('.earn');
+    var te = 0, bs = 0;
+    earns.forEach(function(i){
+      if(i.offsetParent === null) return;
+      var v = n(i.value); te += v;
+      if(i.dataset.field === 'basic_salary') bs = v;
+    });
+    var ss = bs * 0.055, pf = bs * 0.08;
+    var si = tr.querySelector('[data-field="ssnit_deduction"]');
+    var pi = tr.querySelector('[data-field="pf_eight_percent"]');
+    if(si) si.value = f(ss);
+    if(pi) pi.value = f(pf);
+    var payeI = tr.querySelector('[data-field="paye"]');
+    var rk = (tr.getAttribute('data-name') || '');
+    if(!payeLock[rk] && payeI){
+      var ti = te - ss - pf;
+      if(ti < 0) ti = 0;
+      var br = [[490,0],[490,0.05],[1727,0.10],[9293,0.175],[33000,0.25]];
+      var rm = ti, tx = 0;
+      for(var i=0;i<br.length;i++){ if(rm<=0) break; var b = Math.min(rm, br[i][0]); tx += b * br[i][1]; rm -= b; }
+      if(rm > 0) tx += rm * 0.30;
+      payeI.value = f(Math.max(0, tx));
+    }
+    var ti = tr.querySelector('[data-field="tithe"]');
+    if(ti) ti.value = f(te * 0.10);
+    var ded = tr.querySelectorAll('.ded');
+    var td = 0;
+    ded.forEach(function(i){
+      if(i.offsetParent === null) return;
+      td += n(i.value);
+    });
+    var net = te - td;
+    var elTR = tr.querySelector('.ws-total-r');
+    var elTD = tr.querySelector('.ws-total-d');
+    var elNet = tr.querySelector('.ws-net');
+    if(elTR) elTR.textContent = f(te);
+    if(elTD) elTD.textContent = f(td);
+    if(elNet) elNet.textContent = f(net);
+    tr.classList.toggle('ws-has-data', bs > 0 || te > 0);
+    return {te:te, td:td, net:net};
+  }
+
+  function calcAll(){
+    var gt = {te:0, td:0, net:0};
+    var allRows = document.querySelectorAll('#wsBody tr');
+    for(var ri=0; ri<allRows.length; ri++){
+      var tr = allRows[ri];
+      if(tr.style.display === 'none') continue;
+      try{
+        var r = calcRow(tr);
+        gt.te += r.te; gt.td += r.td; gt.net += r.net;
+      }catch(e){}
+    }
+    var elE = document.getElementById('gTotalEarn');
+    var elD = document.getElementById('gTotalDed');
+    var elN = document.getElementById('gTotalNet');
+    if(elE) elE.textContent = 'GHS ' + f(gt.te);
+    if(elD) elD.textContent = 'GHS ' + f(gt.td);
+    if(elN) elN.textContent = 'GHS ' + f(gt.net);
+  }
+
+  var searchQ = '';
+  var filterCat = 'all';
+
+  function applyFilter(){
+    var rows = document.querySelectorAll('#wsBody tr');
+    var vis = 0;
+    for(var ri=0; ri<rows.length; ri++){
+      var tr = rows[ri];
+      var nm = (tr.getAttribute('data-name') || '').toLowerCase();
+      var cat = tr.getAttribute('data-cat') || 'pastoral';
+      var match = (!searchQ || nm.indexOf(searchQ) !== -1) &&
+                  (filterCat === 'all' || cat === filterCat);
+      tr.style.display = match ? '' : 'none';
+      if(match) vis++;
+    }
+    var el = document.getElementById('wsShowCount');
+    if(el) el.textContent = vis + ' of ' + rows.length;
+    calcAll();
+  }
+
+  document.getElementById('wsSearch').addEventListener('input', function(){
+    searchQ = this.value.trim().toLowerCase();
+    applyFilter();
+  });
+
+  function setFilter(cat){
+    filterCat = cat;
+    var btns = document.querySelectorAll('.ws-filter button');
+    for(var i=0;i<btns.length;i++){
+      btns[i].className = btns[i].getAttribute('data-filter') === cat ? 'active' : '';
+    }
+    applyFilter();
+  }
+
+  var filterBtns = document.querySelectorAll('.ws-filter button');
+  for(var fi=0; fi<filterBtns.length; fi++){
+    (function(btn){
+      btn.onclick = function(){ setFilter(btn.getAttribute('data-filter')); };
+    })(filterBtns[fi]);
+  }
+
+  function applyPctToRow(tr){
+    var cat = tr.getAttribute('data-cat') || 'pastoral';
+    var bs = n(tr.querySelector('[data-field="basic_salary"]').value);
+    if(bs <= 0) return;
+    var pctInputs = document.querySelectorAll('.ws-pct[data-cat="' + cat + '"]');
+    for(var pi=0; pi<pctInputs.length; pi++){
+      var pct = n(pctInputs[pi].value);
+      if(pct <= 0) continue;
+      var field = pctInputs[pi].getAttribute('data-field');
+      var inp = tr.querySelector('[data-field="' + field + '"]');
+      if(inp && !inp.readOnly) inp.value = f(bs * pct / 100);
+    }
+  }
+
+  function applyPctToVisible(){
+    var rows = document.querySelectorAll('#wsBody tr');
+    var count = 0;
+    for(var ri=0; ri<rows.length; ri++){
+      var tr = rows[ri];
+      if(tr.style.display === 'none') continue;
+      applyPctToRow(tr);
+      count++;
+    }
+    calcAll();
+    if(window.DCLMToast) DCLMToast.info('Applied', 'Updated ' + count + ' visible rows');
+  }
+
+  document.getElementById('pctApplyBtn').addEventListener('click', applyPctToVisible);
+
+  document.addEventListener('input', function(e){
+    if(e.target.classList.contains('wf') && e.target.getAttribute('data-field') === 'basic_salary'){
+      var tr = e.target.closest('tr');
+      if(tr) applyPctToRow(tr);
+    }
+  });
+
+  document.addEventListener('input', function(e){
+    if(e.target.classList.contains('wf')) calcAll();
+  });
+
+  document.addEventListener('blur', function(e){
+    if(e.target.classList.contains('wf') && e.target.value && !isNaN(e.target.value))
+      e.target.value = n(e.target.value).toFixed(2);
+  }, true);
+
+  document.addEventListener('change', function(e){
+    if(e.target.classList.contains('ws-cat')) applyCat(e.target.closest('tr'));
+  });
+
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.ws-paye-lock');
+    if(!btn) return;
+    var inp = btn.parentNode.querySelector('.paye-input');
+    var tr = btn.closest('tr');
+    var rk = tr ? (tr.getAttribute('data-name') || '') : '';
+    if(!inp || !tr) return;
+    payeLock[rk] = !payeLock[rk];
+    inp.readOnly = !payeLock[rk];
+    inp.style.background = payeLock[rk] ? '#fff' : '#f1f5f9';
+    var ic = btn.querySelector('i');
+    if(ic) ic.className = payeLock[rk] ? 'fas fa-unlock' : 'fas fa-lock';
+    btn.title = payeLock[rk] ? 'Auto-calculate PAYE' : 'Edit PAYE manually';
+    if(!payeLock[rk]) calcAll();
+  });
+
+  function loadMonth(){
+    var m = document.getElementById('monthSelect').value;
+    if(window.showLoading) showLoading('Loading ' + m + '...');
+    fetch('/payslips/search?month=' + encodeURIComponent(m) + '&limit=9999')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(window.hideLoading) hideLoading();
+      var map = {};
+      (d.records || []).forEach(function(p){ map[p.employee_name] = p; });
+      document.querySelectorAll('#wsBody tr').forEach(function(tr){
+        var nm = tr.getAttribute('data-name');
+        var p = map[nm] || {};
+        if(p.staff_category){
+          var sel = tr.querySelector('.ws-cat');
+          if(sel){ sel.value = p.staff_category; applyCat(tr); }
+        }
+        tr.querySelectorAll('.wf').forEach(function(inp){
+          var k = inp.dataset.field;
+          if(!k || inp.classList.contains('ws-cat')) return;
+          var val = p[k];
+          inp.value = (val !== undefined && val !== null) ? f(val) : '';
+        });
+        calcRow(tr);
+      });
+      calcAll();
+      if(window.DCLMToast) DCLMToast.info('Loaded', Object.keys(map).length + ' records');
+    })
+    .catch(function(err){
+      if(window.hideLoading) hideLoading();
+      if(window.DCLMToast) DCLMToast.error('Load Error', err.message);
+    });
+  }
+  document.getElementById('loadMonthBtn').addEventListener('click', loadMonth);
+
+  function getPrevMonth(monthStr){
+    var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var parts = monthStr.split(' ');
+    if(parts.length < 2) return '';
+    var mIdx = months.indexOf(parts[0]);
+    var yr = parseInt(parts[1], 10);
+    if(mIdx < 0 || isNaN(yr)) return '';
+    mIdx--;
+    if(mIdx < 0){ mIdx = 11; yr--; }
+    return months[mIdx] + ' ' + yr;
+  }
+
+  document.getElementById('copyPrevBtn').addEventListener('click', function(){
+    var curM = document.getElementById('monthSelect').value;
+    var prevM = getPrevMonth(curM);
+    if(!prevM){ if(window.DCLMToast) DCLMToast.warning('Cannot determine previous month'); return; }
+    if(window.showLoading) showLoading('Copying ' + prevM + '...');
+    fetch('/payslips/search?month=' + encodeURIComponent(prevM) + '&limit=9999')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(window.hideLoading) hideLoading();
+      var map = {};
+      (d.records || []).forEach(function(p){ map[p.employee_name] = p; });
+      var count = 0;
+      document.querySelectorAll('#wsBody tr').forEach(function(tr){
+        var nm = tr.getAttribute('data-name');
+        var p = map[nm];
+        if(!p) return;
+        count++;
+        if(p.staff_category){
+          var sel = tr.querySelector('.ws-cat');
+          if(sel){ sel.value = p.staff_category; applyCat(tr); }
+        }
+        tr.querySelectorAll('.wf').forEach(function(inp){
+          var k = inp.dataset.field;
+          if(!k || inp.classList.contains('ws-cat')) return;
+          var val = p[k];
+          inp.value = (val !== undefined && val !== null) ? f(val) : '';
+        });
+        calcRow(tr);
+      });
+      calcAll();
+      if(window.DCLMToast) DCLMToast.success('Copied', count + ' records from ' + prevM);
+    })
+    .catch(function(err){
+      if(window.hideLoading) hideLoading();
+      if(window.DCLMToast) DCLMToast.error('Copy Error', err.message);
+    });
+  });
+
+  function saveAll(){
+    var m = document.getElementById('monthSelect').value;
+    var rows = [];
+    document.querySelectorAll('#wsBody tr').forEach(function(tr){
+      var nm = tr.getAttribute('data-name');
+      if(!nm) return;
+      var cat = tr.querySelector('.ws-cat');
+      var row = { employee_name: nm, staff_category: cat ? cat.value : 'pastoral' };
+      var has = false;
+      tr.querySelectorAll('.wf').forEach(function(inp){
+        if(inp.classList.contains('ws-cat')) return;
+        var k = inp.dataset.field;
+        if(!k) return;
+        var v = n(inp.value);
+        row[k] = v;
+        if(v !== 0) has = true;
+      });
+      if(!has) return;
+      rows.push(row);
+    });
+    if(rows.length === 0){ if(window.DCLMToast) DCLMToast.warning('No Data','Enter data first.'); return; }
+    if(window.showLoading) showLoading('Saving ' + rows.length + '...');
+    fetch('/api/payroll/save-workspace', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ month: m, rows: rows })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(window.hideLoading) hideLoading();
+      if(d.success && d.saved > 0){
+        var msg = d.saved + ' saved.';
+        if(d.errors && d.errors.length) msg += ' Errors: ' + d.errors.join('; ');
+        if(window.DCLMToast) DCLMToast.success('Saved', msg);
+        if(d.saved > 0) loadMonth();
+      } else {
+        if(window.DCLMToast) DCLMToast.error('Error', (d.errors||[d.error||'Unknown']).join(', '));
+      }
+    })
+    .catch(function(err){
+      if(window.hideLoading) hideLoading();
+      if(window.DCLMToast) DCLMToast.error('Save Error', err.message);
+    });
+  }
+  document.getElementById('saveAllBtn').addEventListener('click', saveAll);
+
+  document.getElementById('monthSelect').addEventListener('change', loadMonth);
+
+  try{ calcAll(); applyFilter(); setTimeout(loadMonth, 50); }catch(e){}
+})();
+</script>
+{% endblock %}

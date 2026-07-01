@@ -20,7 +20,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Templates
 templates = Jinja2Templates(directory="templates")
-# Let Jinja2 use its default LRU cache (400 entries) for performance
+templates.env.auto_reload = True
 
 import json
 
@@ -1319,6 +1319,139 @@ async def delete_staff(request: Request, staff_id: int, db: Session = Depends(ge
         rendered = template.render({"user": current_user, "employees": employees, "error": f"Failed to delete staff: {str(e)}"})
         return HTMLResponse(content=rendered, media_type="text/html")
 
+
+# ═══════════════════════════════════════════════
+# PAYROLL WORKSPACE — online payroll computation
+# ═══════════════════════════════════════════════
+
+@app.get("/payroll-workspace", response_class=HTMLResponse)
+async def payroll_workspace_page(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+    from app.models.employee import Employee
+    employees = db.query(Employee).filter(Employee.name.isnot(None)).order_by(Employee.name).all()
+    emp_names = [e.name for e in employees]
+    from app.models.payroll import PayrollRecord
+    from datetime import datetime
+    from sqlalchemy import func as sa_func
+    # Determine each employee's category from their latest payslip
+    latest_cats = {}
+    latest_subq = db.query(
+        PayrollRecord.employee_name,
+        sa_func.max(PayrollRecord.id).label('max_id')
+    ).filter(PayrollRecord.employee_name.isnot(None)).group_by(PayrollRecord.employee_name).subquery()
+    latest_recs = db.query(PayrollRecord).join(
+        latest_subq,
+        PayrollRecord.id == latest_subq.c.max_id
+    ).all()
+    for r in latest_recs:
+        latest_cats[r.employee_name] = r.staff_category or "pastoral"
+    emp_cats = [latest_cats.get(n, "pastoral") for n in emp_names]
+    # Build month list
+    now = datetime.now()
+    all_months = set()
+    for i in range(24):
+        m = now.month - i
+        y = now.year
+        while m < 1:
+            m += 12
+            y -= 1
+        all_months.add(datetime(y, m, 1).strftime("%B %Y"))
+    existing = db.query(PayrollRecord.month).distinct().filter(PayrollRecord.month.isnot(None)).all()
+    for e in existing:
+        all_months.add(e[0])
+    def _month_key(m):
+        try:
+            return datetime.strptime(m, "%B %Y")
+        except (ValueError, TypeError):
+            return datetime(1900, 1, 1)
+    month_list = sorted((m for m in all_months if m), key=_month_key, reverse=True)
+    template = templates.get_template("payroll_workspace.html")
+    rendered = template.render({
+        "user": current_user,
+        "employee_names": emp_names,
+        "employee_categories": emp_cats,
+        "months": month_list,
+    })
+    return HTMLResponse(content=rendered, media_type="text/html")
+
+
+@app.post("/api/payroll/save-workspace")
+async def save_workspace_payroll(request: Request, db: Session = Depends(get_db)):
+    try:
+        current_user = get_current_user_web(request, db)
+    except HTTPException:
+        return JSONResponse(status_code=401, content={"success": False, "error": "Not authenticated"})
+    from app.models.payroll import PayrollRecord
+    from app.services.payroll_service import _clean
+    try:
+        data = await request.json()
+        month = (data.get("month") or "").strip()
+        if not month:
+            return JSONResponse(status_code=400, content={"success": False, "error": "Month is required"})
+        rows = data.get("rows", [])
+        if not rows:
+            return JSONResponse(status_code=400, content={"success": False, "error": "No payroll entries"})
+        saved = 0
+        errors = []
+        for row in rows:
+            try:
+                emp_name = (row.get("employee_name") or "").strip()
+                if not emp_name:
+                    continue
+                # Upsert: find existing record for this employee + month
+                existing = db.query(PayrollRecord).filter(
+                    PayrollRecord.employee_name == emp_name,
+                    PayrollRecord.month == month
+                ).first()
+                vals = {
+                    "staff_category": row.get("staff_category", "pastoral"),
+                    "basic_salary": _clean(row.get("basic_salary")),
+                    "meals_monthly": _clean(row.get("meals_monthly")),
+                    "responsibility_allowance": _clean(row.get("responsibility_allowance")),
+                    "cola": _clean(row.get("cola")),
+                    "leave_allowance": _clean(row.get("leave_allowance")),
+                    "other_earnings": _clean(row.get("other_earnings")),
+                    "rent_monthly": _clean(row.get("rent_monthly")),
+                    "utility_monthly": _clean(row.get("utility_monthly")),
+                    "transport_monthly": _clean(row.get("transport_monthly")),
+                    "ssnit_deduction": _clean(row.get("ssnit_deduction")),
+                    "pf_eight_percent": _clean(row.get("pf_eight_percent")),
+                    "paye": _clean(row.get("paye")),
+                    "tithe": _clean(row.get("tithe")),
+                    "future_savings": _clean(row.get("future_savings")),
+                    "other_deductions": _clean(row.get("other_deductions")),
+                }
+                # Calculate totals
+                earnings = {k: v for k, v in vals.items() if k in (
+                    "basic_salary","meals_monthly","responsibility_allowance","cola",
+                    "leave_allowance","other_earnings","rent_monthly","utility_monthly","transport_monthly"
+                )}
+                deductions = {k: v for k, v in vals.items() if k in (
+                    "paye","tithe","future_savings","other_deductions","ssnit_deduction","pf_eight_percent"
+                )}
+                from app.services.payroll_service import calculate_payroll_totals
+                te, td, ns = calculate_payroll_totals(earnings, deductions)
+                vals["total_earnings"] = te
+                vals["total_deductions"] = td
+                vals["net_salary"] = ns
+                if existing:
+                    for k, v in vals.items():
+                        setattr(existing, k, v)
+                else:
+                    rec = PayrollRecord(employee_name=emp_name, month=month, **vals)
+                    db.add(rec)
+                saved += 1
+            except Exception as e:
+                errors.append(f"{row.get('employee_name','?')}: {str(e)[:80]}")
+        db.commit()
+        return JSONResponse(content={"success": True, "saved": saved, "errors": errors, "upserted": True})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+    
+
 @app.get("/payslips", response_class=HTMLResponse)
 async def payslips_page(request: Request, db: Session = Depends(get_db)):
     try:
@@ -1452,7 +1585,7 @@ async def payslips_page(request: Request, db: Session = Depends(get_db)):
 
 
 @app.get("/payslips/search")
-async def payslips_search(request: Request, db: Session = Depends(get_db), q: str = "", month: str = "", page: int = 1):
+async def payslips_search(request: Request, db: Session = Depends(get_db), q: str = "", month: str = "", page: int = 1, limit: int = 0):
     """Search payslips with pagination for AJAX calls"""
     try:
         current_user = get_current_user_web(request, db)
@@ -1462,7 +1595,7 @@ async def payslips_search(request: Request, db: Session = Depends(get_db), q: st
     from app.models.payroll import PayrollRecord
     from sqlalchemy import func as sa_func
     
-    per_page = 50
+    per_page = limit if limit > 0 else 50
     query = db.query(PayrollRecord)
     
     if q:
@@ -1473,13 +1606,22 @@ async def payslips_search(request: Request, db: Session = Depends(get_db), q: st
     total = query.count()
     records = query.order_by(PayrollRecord.employee_name).offset((page - 1) * per_page).limit(per_page).all()
     
+    def r2dict(r):
+        from datetime import datetime
+        d = {}
+        for c in r.__table__.columns:
+            v = getattr(r, c.name)
+            if isinstance(v, datetime):
+                v = v.isoformat()
+            d[c.name] = v
+        return d
+    
     return JSONResponse(content={
         "total": total,
         "page": page,
         "per_page": per_page,
         "total_pages": max(1, (total + per_page - 1) // per_page),
-        "records": [{"id": r.id, "employee_name": r.employee_name, "month": r.month, 
-                      "net_salary": r.net_salary, "pdf_generated": r.pdf_generated} for r in records]
+        "records": [r2dict(r) for r in records]
     })
 
 @app.get("/payslips/{payroll_id}/data")
@@ -1552,10 +1694,14 @@ async def payslip_data(payroll_id: int, request: Request, db: Session = Depends(
             "ssnit_number": employee.ssnit_number if employee else "",
             }
 
-        # Fetch loans for this employee (matched by name)
+        # Fetch loans for this employee (matched by name with fallback)
         loans_data = []
         if employee and employee.name:
-            loan_records = db.query(Loan).filter(Loan.employee_name == employee.name).filter(Loan.status != "Completed").all()
+            loan_records = db.query(Loan).filter(Loan.employee_name == employee.name, Loan.status != "Completed").all()
+            if not loan_records:
+                norm_emp = ' '.join(employee.name.split()).upper()
+                loan_records = db.query(Loan).filter(Loan.status != "Completed").all()
+                loan_records = [l for l in loan_records if ' '.join((l.employee_name or '').split()).upper() == norm_emp]
             for loan in loan_records:
                 months_remaining = max(0, (loan.months_to_pay or 1) - (loan.months_paid or 0))
                 loans_data.append({

@@ -208,3 +208,38 @@ def amount_to_words(amount):
         result += " and " + pesewas_word + " Pesewas"
     result += " Only"
     return result
+
+
+# ─── Ghana PAYE Tax Brackets (monthly, 2024) ─────────────────────────
+TAX_BRACKETS = [
+    (490, 0.00),       # First 490 @ 0%
+    (490, 0.05),       # Next 490 @ 5%
+    (1727, 0.10),      # Next 1,727 @ 10%
+    (9293, 0.175),     # Next 9,293 @ 17.5%
+    (33000, 0.25),     # Next 33,000 @ 25%
+]
+
+
+def compute_paye(taxable_income):
+    """Compute Ghana PAYE (income tax) using progressive monthly tax brackets.
+    
+    Args:
+        taxable_income: Monthly taxable income after SSF/PF deductions.
+    
+    Returns:
+        Calculated PAYE amount (float).
+    """
+    if taxable_income <= 0:
+        return 0.0
+    remaining = taxable_income
+    tax = 0.0
+    for band_limit, rate in TAX_BRACKETS:
+        if remaining <= 0:
+            break
+        band_amount = min(remaining, band_limit)
+        tax += band_amount * rate
+        remaining -= band_amount
+    # Remaining above all bands taxed at top marginal rate (30%)
+    if remaining > 0:
+        tax += remaining * 0.30
+    return round(tax, 2)
