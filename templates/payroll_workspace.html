@@ -74,14 +74,25 @@
 /* ── Table ── */
 .ws-table{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100%}
 /* Column group header row */
-.ws-table .ws-gh-row th{background:#0f172a;color:#fff;padding:7px 3px 5px;text-align:center;font-weight:700;position:sticky;top:0;z-index:10;border-right:1px solid rgba(255,255,255,0.06);font-size:10px;letter-spacing:0.04em;text-transform:uppercase}
+.ws-table .ws-gh-row th{background:#0f172a;color:#fff;padding:7px 3px 5px;text-align:center;font-weight:700;position:sticky;top:0;z-index:10;border-right:1px solid rgba(255,255,255,0.06);font-size:10px;letter-spacing:0.04em;text-transform:uppercase;transition:opacity .2s}
 .ws-table .ws-gh-row th:first-child{text-align:left;padding-left:8px;min-width:130px;width:130px;position:sticky;left:0;z-index:12;background:#0f172a}
-.ws-table .ws-gh-row th.ws-gh-earn{background:#065f46;color:#fff;border-bottom:2px solid #059669}
-.ws-table .ws-gh-row th.ws-gh-ded{background:#7f1d1d;color:#fff;border-bottom:2px solid #dc2626}
-.ws-table .ws-gh-row th.ws-gh-tot{background:#1e1b4b;color:#fff;border-bottom:2px solid #4f46e5}
+.ws-table .ws-gh-row th.ws-gh-earn{background:var(--gh-earn,#065f46);color:#fff;border-bottom:2px solid #059669}
+.ws-table .ws-gh-row th.ws-gh-ded{background:var(--gh-ded,#7f1d1d);color:#fff;border-bottom:2px solid #dc2626}
+.ws-table .ws-gh-row th.ws-gh-tot{background:var(--gh-tot,#1e1b4b);color:#fff;border-bottom:2px solid #4f46e5}
 /* Column sub-header row */
-.ws-table th.sub{background:#1e293b;color:#cbd5e1;padding:5px 3px;text-align:center;font-weight:600;position:sticky;top:31px;z-index:10;border-right:1px solid rgba(255,255,255,0.05);font-size:9px;letter-spacing:0.03em}
+.ws-table th.sub{background:#1e293b;color:#cbd5e1;padding:5px 3px;text-align:center;font-weight:600;position:sticky;top:31px;z-index:10;border-right:1px solid rgba(255,255,255,0.05);font-size:9px;letter-spacing:0.03em;transition:opacity .2s}
 .ws-table th.sub:first-child{text-align:left;padding-left:8px;min-width:130px;width:130px;position:sticky;left:0;z-index:12;background:#1e293b}
+/* Category column visibility — hide entire columns based on active filter */
+.ws-table.ws-view-pastoral .col-np,
+.ws-table.ws-view-pastoral .col-np-th,
+.ws-table.ws-view-non_pastoral .col-pastoral,
+.ws-table.ws-view-non_pastoral .col-pastoral-th{display:none!important}
+/* Scroll fade indicator */
+.ws-scroll-wrap{position:relative}
+.ws-scroll-wrap::after{content:'';position:absolute;top:0;right:0;bottom:0;width:40px;background:linear-gradient(to right,transparent,rgba(0,0,0,0.06));pointer-events:none;opacity:0;transition:opacity .3s;border-radius:0 10px 10px 0}
+.ws-scroll-wrap.is-scrollable::after{opacity:1}
+.ws-scroll-indicator{position:absolute;right:12px;bottom:12px;background:#2563eb;color:#fff;padding:6px 14px;border-radius:20px;font-size:11px;font-weight:600;pointer-events:none;animation:fadeInUp .5s ease;box-shadow:0 2px 8px rgba(37,99,235,0.3);z-index:5;display:flex;align-items:center;gap:6px}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .ws-table td{padding:2px 3px;text-align:center;border-bottom:1px solid #f1f5f9;vertical-align:middle;height:34px;transition:background .15s}
 .ws-table td:first-child{text-align:left;padding:2px 6px 2px 10px;font-weight:500;color:#0f172a;position:sticky;left:0;z-index:2;background:#fff;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis;max-width:130px;border-right:1px solid #e2e8f0}
 .ws-table tr:nth-child(even) td{background:#f8fafc}
@@ -158,14 +169,14 @@
     </div>
   </div>
   <div class="ws-stat">
-    <div class="ws-stat-icon amber"><i class="fas fa-eye"></i></div>
+    <div class="ws-stat-icon amber"><i class="fas fa-users"></i></div>
     <div>
-      <div class="ws-stat-label">Visible</div>
+      <div class="ws-stat-label" id="wsViewLabel">All Staff</div>
       <div class="ws-stat-value" id="wsShowCount">{{ employee_names|length }}</div>
     </div>
   </div>
   <div class="ws-stat">
-    <div class="ws-stat-icon green"><i class="fas fa-plus-circle"></i></div>
+    <div class="ws-stat-icon green"><i class="fas fa-calculator"></i></div>
     <div>
       <div class="ws-stat-label">Auto-calc</div>
       <div class="ws-stat-value" style="font-size:12px;font-weight:500;">SSF 5.5% &middot; PF 8% &middot; PAYE &middot; Tithe</div>
@@ -214,28 +225,28 @@
 <tr class="ws-gh-row">
   <th>Employee</th>
   <th style="width:90px;min-width:90px;">Category</th>
-  <th colspan="11" class="ws-gh-earn">Earnings</th>
-  <th colspan="5" class="ws-gh-ded">Deductions</th>
-  <th colspan="3" class="ws-gh-tot">Totals</th>
+  <th colspan="9" class="ws-gh-earn ws-col-all">Earnings</th>
+  <th colspan="6" class="ws-gh-ded ws-col-all">Deductions</th>
+  <th colspan="3" class="ws-gh-tot ws-col-all">Totals</th>
 </tr>
 <tr>
   <th class="sub">Employee</th>
   <th class="sub" style="width:90px;min-width:90px;">Category</th>
   <th class="sub">Basic<span class="ws-th-sub">GHS</span></th>
   <th class="sub">Meals<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Resp.All.<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Rent<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Util.<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Transport<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-pastoral-th">Resp.All.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-np-th">Rent<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-np-th">Util.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-np-th">Transport<span class="ws-th-sub">GHS</span></th>
   <th class="sub">COLA<span class="ws-th-sub">GHS</span></th>
   <th class="sub">Leave<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Oth.Earn.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-np-th">Oth.Earn.<span class="ws-th-sub">GHS</span></th>
   <th class="sub">SSF5.5%<span class="ws-th-sub">auto</span></th>
   <th class="sub">PF8%<span class="ws-th-sub">auto</span></th>
   <th class="sub">PAYE<span class="ws-th-sub">auto</span></th>
   <th class="sub">Tithe<span class="ws-th-sub">auto</span></th>
   <th class="sub">Fut.Sav.<span class="ws-th-sub">GHS</span></th>
-  <th class="sub">Oth.Ded.<span class="ws-th-sub">GHS</span></th>
+  <th class="sub col-np-th">Oth.Ded.<span class="ws-th-sub">GHS</span></th>
   <th class="sub" style="background:#065f46;color:#fff;">Earn.</th>
   <th class="sub" style="background:#7f1d1d;color:#fff;">Ded.</th>
   <th class="sub" style="background:#1e1b4b;color:#fff;">Net</th>
@@ -255,13 +266,13 @@
   </td>
   <td><input type="text" class="wf earn" data-field="basic_salary" placeholder="-" /></td>
   <td><input type="text" class="wf earn" data-field="meals_monthly" placeholder="-" /></td>
-  <td class="ws-ra"><input type="text" class="wf earn ws-ra-input" data-field="responsibility_allowance" placeholder="-" /></td>
-  <td class="ws-np-col"><input type="text" class="wf earn" data-field="rent_monthly" placeholder="-" /></td>
-  <td class="ws-np-col"><input type="text" class="wf earn" data-field="utility_monthly" placeholder="-" /></td>
-  <td class="ws-np-col"><input type="text" class="wf earn" data-field="transport_monthly" placeholder="-" /></td>
+  <td class="ws-ra col-pastoral"><input type="text" class="wf earn ws-ra-input" data-field="responsibility_allowance" placeholder="-" /></td>
+  <td class="ws-np-col col-np"><input type="text" class="wf earn" data-field="rent_monthly" placeholder="-" /></td>
+  <td class="ws-np-col col-np"><input type="text" class="wf earn" data-field="utility_monthly" placeholder="-" /></td>
+  <td class="ws-np-col col-np"><input type="text" class="wf earn" data-field="transport_monthly" placeholder="-" /></td>
   <td><input type="text" class="wf earn" data-field="cola" placeholder="-" /></td>
   <td><input type="text" class="wf earn" data-field="leave_allowance" placeholder="-" /></td>
-  <td class="ws-oe"><input type="text" class="wf earn ws-oe-input" data-field="other_earnings" placeholder="-" /></td>
+  <td class="ws-oe col-np"><input type="text" class="wf earn ws-oe-input" data-field="other_earnings" placeholder="-" /></td>
   <td><input type="text" class="wf ded" data-field="ssnit_deduction" readonly tabindex="-1" /></td>
   <td><input type="text" class="wf ded" data-field="pf_eight_percent" readonly tabindex="-1" /></td>
   <td>
@@ -272,7 +283,7 @@
   </td>
   <td><input type="text" class="wf ded" data-field="tithe" readonly tabindex="-1" /></td>
   <td><input type="text" class="wf ded" data-field="future_savings" placeholder="-" /></td>
-  <td class="ws-oe"><input type="text" class="wf ded ws-oe-input" data-field="other_deductions" placeholder="-" /></td>
+  <td class="ws-oe col-np"><input type="text" class="wf ded ws-oe-input" data-field="other_deductions" placeholder="-" /></td>
   <td class="ws-total-r">0.00</td>
   <td class="ws-total-d">0.00</td>
   <td class="ws-net">0.00</td>
@@ -388,6 +399,7 @@
   var filterCat = 'all';
 
   function applyFilter(){
+    var table = document.getElementById('wsTable');
     var rows = document.querySelectorAll('#wsBody tr');
     var vis = 0;
     for(var ri=0; ri<rows.length; ri++){
@@ -399,9 +411,25 @@
       tr.style.display = match ? '' : 'none';
       if(match) vis++;
     }
+    // Toggle table view class for column visibility
+    if(table){
+      table.className = 'ws-table' + (filterCat !== 'all' ? ' ws-view-' + filterCat : '');
+    }
     var el = document.getElementById('wsShowCount');
     if(el) el.textContent = vis + ' of ' + rows.length;
     calcAll();
+    // Update scroll indicator
+    var wrap = document.querySelector('.ws-scroll-wrap');
+    if(wrap){
+      var si = wrap.querySelector('.ws-scroll-indicator');
+      if(!si){
+        si = document.createElement('div');
+        si.className = 'ws-scroll-indicator';
+        si.innerHTML = '<i class="fas fa-chevron-right"></i> Scroll for more';
+        wrap.appendChild(si);
+      }
+      si.style.display = wrap.scrollWidth > wrap.clientWidth ? '' : 'none';
+    }
   }
 
   document.getElementById('wsSearch').addEventListener('input', function(){
@@ -415,6 +443,12 @@
     for(var i=0;i<btns.length;i++){
       btns[i].className = btns[i].getAttribute('data-filter') === cat ? 'active' : '';
     }
+    var label = document.getElementById('wsViewLabel');
+    if(label) label.textContent = cat === 'all' ? 'All Staff' : (cat === 'pastoral' ? 'Pastoral' : 'Non-Pastoral');
+    // Show/hide percentage bar groups based on filter
+    document.querySelectorAll('.pct-group').forEach(function(g){
+      g.style.display = (cat === 'all' || g.classList.contains(cat)) ? '' : 'none';
+    });
     applyFilter();
   }
 
@@ -652,7 +686,21 @@
     }
   }catch(e){}
 
-  try{ calcAll(); applyFilter(); setTimeout(loadMonth, 50); }catch(e){}
+  function checkScroll(){
+    var wrap = document.querySelector('.ws-scroll-wrap');
+    if(!wrap) return;
+    wrap.classList.toggle('is-scrollable', wrap.scrollWidth > wrap.clientWidth);
+    var si = wrap.querySelector('.ws-scroll-indicator');
+    if(si) si.style.display = wrap.scrollWidth > wrap.clientWidth ? '' : 'none';
+  }
+  window.addEventListener('resize', checkScroll);
+  var origLoad = loadMonth;
+  loadMonth = function(){
+    var result = origLoad.apply(this, arguments);
+    setTimeout(checkScroll, 300);
+    return result;
+  };
+  try{ calcAll(); applyFilter(); setTimeout(function(){ loadMonth(); checkScroll(); }, 50); }catch(e){}
 })();
 </script>
 {% endblock %}
